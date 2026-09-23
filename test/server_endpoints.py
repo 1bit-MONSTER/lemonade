@@ -7070,6 +7070,33 @@ class EndpointTests(ServerTestBase):
             self._set_extra_models_dir(prior_dir)
             shutil.rmtree(extra_dir, ignore_errors=True)
 
+    def test_021yf_extra_root_shards_are_one_model(self):
+        """Shard files at the search root are one model, as they are in a folder."""
+        extra_dir = self._make_extra_models_dir(
+            "root_shards",
+            {
+                "Big-Q4_K_M-00001-of-00002.gguf": None,
+                "Big-Q4_K_M-00002-of-00002.gguf": None,
+                "Small-Q8_0.gguf": None,
+            },
+        )
+
+        prior_dir = self._set_extra_models_dir(extra_dir)
+        try:
+            found = self._discovered_extra_models(extra_dir)
+            self.assertEqual(
+                found,
+                {
+                    "Big-Q4_K_M-00001-of-00002.gguf": "Big-Q4_K_M",
+                    "Small-Q8_0.gguf": "Small-Q8_0",
+                },
+            )
+
+            print("[OK] root shard files are one model")
+        finally:
+            self._set_extra_models_dir(prior_dir)
+            shutil.rmtree(extra_dir, ignore_errors=True)
+
     def test_021r_openai_chat_extra_models_precedence(self):
         """Regression test for #2014: OpenAI API resolves aliases to local files, shadowing built-ins."""
         # Use a built-in model name to prove precedence and alias resolution simultaneously
