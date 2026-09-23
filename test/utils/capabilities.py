@@ -112,6 +112,37 @@ CAPABILITIES = {
                 "llm_npu": "Qwen2.5-3B-Instruct-NPU",
             },
         },
+        "onebit": {
+            # The 1bit engine (`1bit serve`); installed separately, like flm.
+            # Declared conservatively: the NPU route has no tools or stop.
+            "backends": ["vulkan", "hrx", "npu", "cuda"],
+            "supports": {
+                "chat_completions": True,
+                "chat_completions_streaming": True,
+                "chat_completions_async": False,
+                "completions": True,
+                "completions_streaming": True,
+                "completions_async": False,
+                "responses_api": False,
+                "responses_api_streaming": False,
+                "embeddings": False,
+                "embeddings_batch": False,
+                "reranking": False,
+                "tool_calls": False,
+                "tool_calls_streaming": False,
+                "multi_model": True,
+                "stop_parameter": False,
+                "echo_parameter": False,
+                "generation_parameters": False,
+                "slots": False,
+                "static_max_context_window": False,
+            },
+            "test_models": {
+                # Not a thinking model: the tests' 10-token budgets would be
+                # spent on reasoning otherwise (the llamacpp tests use it too).
+                "llm": "LFM2-1.2B-1bit",
+            },
+        },
         "flm": {
             "backends": ["npu"],
             "supports": {
