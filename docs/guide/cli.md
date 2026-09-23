@@ -473,6 +473,15 @@ The following options are available depending on the recipe being used:
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--openmoss BACKEND` | OpenMOSS TTS backend to use | Auto-detected |
+
+#### 1bit engine (NPU, Vulkan, HRX, CUDA) (`onebit` recipe)
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--ctx-size SIZE` | Context size for the model | auto |
+| `--onebit BACKEND` | Device 1bit serve runs the model on: auto, vulkan, hrx, npu or cuda (NVIDIA, through ZINC) | Auto-detected |
+| `--onebit-bin PATH` | Path to the 1bit binary (default: $LEMONADE_ONEBIT_BIN, then 1bit on PATH) | `""` |
+| `--onebit-args ARGS` | Extra arguments appended to the 1bit serve command line | `""` |
 <!-- END GENERATED: cli-recipe-options -->
 **Notes:**
 - Unspecified options will use the backend's default values

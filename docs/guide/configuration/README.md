@@ -100,6 +100,10 @@ When `lemond` starts, effective configuration is resolved by deep-merging settin
   },
   "no_fetch_executables": false,
   "offline": false,
+  "onebit": {
+    "args": "",
+    "backend": "auto"
+  },
   "onnxruntime": {
     "args": "",
     "cpu_args": "",
