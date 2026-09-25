@@ -2116,7 +2116,7 @@
         "labels": [
             "chat"
         ],
-        "size": 9.30
+        "size": 9.3
     },
     "RPG-HaloTales-V1": {
         "checkpoint": "lemonade-sdk/RPG-HaloTales-V1",
@@ -2614,5 +2614,30 @@
         ],
         "size": 81.0,
         "min_resident_gb": 16.0
+    },
+    "Qwen3-4B-Instruct-2507-1bit": {
+        "checkpoint": "unsloth/Qwen3-4B-Instruct-2507-GGUF:Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+        "recipe": "onebit",
+        "labels": [
+            "chat",
+            "tool-calling"
+        ],
+        "size": 2.5
+    },
+    "nomic-embed-text-v2-moe-1bit": {
+        "checkpoint": "nomic-ai/nomic-embed-text-v2-moe-GGUF:Q8_0",
+        "recipe": "onebit",
+        "labels": [
+            "embeddings"
+        ],
+        "size": 0.51
+    },
+    "jina-reranker-v1-tiny-en-1bit": {
+        "checkpoint": "mradermacher/jina-reranker-v1-tiny-en-GGUF:Q8_0",
+        "recipe": "onebit",
+        "labels": [
+            "reranking"
+        ],
+        "size": 0.0367
     }
 }

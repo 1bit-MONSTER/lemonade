@@ -98,6 +98,10 @@ void OnebitServer::load(const std::string& model_name,
         argv.push_back("--ctx-size");
         argv.push_back(std::to_string(ctx_size));
     }
+    // Embedding and reranking models run in that role (llama-server --embedding / --reranking
+    // on the device asked for); chat models need no flag.
+    if (model_info.type == ModelType::EMBEDDING) argv.push_back("--embedding");
+    if (model_info.type == ModelType::RERANKING) argv.push_back("--reranking");
     for (auto& a : split_args(options.get_option("onebit_args"))) argv.push_back(std::move(a));
 
     const bool inherit_output = (log_level_ == "info") || is_debug();

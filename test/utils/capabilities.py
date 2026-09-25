@@ -114,33 +114,39 @@ CAPABILITIES = {
         },
         "onebit": {
             # The 1bit engine (`1bit serve`); installed separately, like flm.
-            # Declared conservatively: the NPU route has no tools or stop.
+            # Declared as measured on Strix Halo through Vulkan and HRX (llama-server behind
+            # 1bit serve). The NPU route serves chat and completions only, and reranking on
+            # HRX fails in HRX's JIT (docs/lemonade.md in 1bit-MONSTER/engine).
             "backends": ["vulkan", "hrx", "npu", "cuda"],
             "supports": {
                 "chat_completions": True,
                 "chat_completions_streaming": True,
-                "chat_completions_async": False,
+                "chat_completions_async": True,
                 "completions": True,
                 "completions_streaming": True,
-                "completions_async": False,
-                "responses_api": False,
-                "responses_api_streaming": False,
-                "embeddings": False,
-                "embeddings_batch": False,
-                "reranking": False,
-                "tool_calls": False,
-                "tool_calls_streaming": False,
+                "completions_async": True,
+                "responses_api": True,
+                "responses_api_streaming": True,
+                "embeddings": True,
+                "embeddings_batch": True,
+                "reranking": True,
+                "tool_calls": True,
+                "tool_calls_streaming": True,
                 "multi_model": True,
-                "stop_parameter": False,
+                "stop_parameter": True,
                 "echo_parameter": False,
                 "generation_parameters": False,
-                "slots": False,
-                "static_max_context_window": False,
+                "slots": True,
+                "static_max_context_window": True,
+                "tokenize": True,
             },
             "test_models": {
                 # Not a thinking model: the tests' 10-token budgets would be
                 # spent on reasoning otherwise (the llamacpp tests use it too).
                 "llm": "LFM2-1.2B-1bit",
+                "tool_calling": "Qwen3-4B-Instruct-2507-1bit",
+                "embedding": "nomic-embed-text-v2-moe-1bit",
+                "reranking": "jina-reranker-v1-tiny-en-1bit",
             },
         },
         "flm": {
