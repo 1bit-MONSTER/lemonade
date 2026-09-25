@@ -40,7 +40,7 @@ inline const BackendDescriptor descriptor = {
         {"npu", {"linux"}, {{"amd_npu", {"XDNA2"}}}, "XDNA2 NPU (1bit NPU model directories)"},
         {"cuda", {"linux"}, {{"nvidia_gpu", {"sm_89", "sm_120"}}}, "NVIDIA Ada and Blackwell GPUs (through ZINC)"},
     },
-    /*supported_modes*/ {"chat"},
+    /*supported_modes*/ {"chat", "embeddings", "reranking"},  // `1bit serve --embedding / --reranking`
     /*required_checkpoints*/ {"main"},
     /*default_capabilities*/ {},
     /*experimental*/    true,
