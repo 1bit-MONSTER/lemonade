@@ -2639,5 +2639,17 @@
             "reranking"
         ],
         "size": 0.0367
+    },
+    "Qwen3.6-35B-A3B-NPU-1bit": {
+        "checkpoint": "FastFlowLM/Qwen3.6-35B-A3B-NPU2",
+        "recipe": "onebit",
+        "recipe_options": {
+            "onebit_backend": "npu"
+        },
+        "labels": [
+            "chat",
+            "reasoning"
+        ],
+        "size": 22.9
     }
 }
