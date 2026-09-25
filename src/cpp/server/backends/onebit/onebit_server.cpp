@@ -10,6 +10,7 @@
 #include <array>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
@@ -21,15 +22,29 @@ namespace backends {
 
 namespace {
 
-// Checkpoints are GGUF files, so model management (variant resolution, GGUF
-// metadata, cache validation) is llamacpp's; only the runtime differs.
+// An NPU model directory: the engine's NPU route runs Q4NX weights (model.q4nx, config.json,
+// tokenizer.json) with its own kernels, as the whole checkpoint repo, not one file.
+bool is_npu_model_dir(const std::string& path) {
+    std::error_code ec;
+    return !path.empty() && std::filesystem::is_directory(path, ec) &&
+           std::filesystem::exists(std::filesystem::path(path) / "model.q4nx", ec);
+}
+
+// GGUF checkpoints are llamacpp's to manage (variant resolution, GGUF metadata, cache
+// validation); only the runtime differs. A checkpoint that names no file and holds
+// model.q4nx is an NPU model directory, handed to `1bit serve` as the directory.
 class OnebitOps : public BackendOps {
 public:
     void populate_metadata(ModelInfo& info, const BackendOpsContext& ctx) const override {
+        if (is_npu_model_dir(info.resolved_path())) return;  // no GGUF to read
         llamacpp::ops()->populate_metadata(info, ctx);
     }
     std::string resolve_checkpoint_path(const ModelInfo& info,
                                         const CheckpointResolveContext& ctx) const override {
+        if (ctx.type == "main" && ctx.variant.empty()) {
+            const std::string dir = BackendOps::resolve_checkpoint_path(info, ctx);
+            if (is_npu_model_dir(dir)) return dir;
+        }
         return llamacpp::ops()->resolve_checkpoint_path(info, ctx);
     }
     std::string find_imported_checkpoint(const std::string& import_dir) const override {
@@ -39,6 +54,7 @@ public:
         return llamacpp::ops()->validate_registration_checkpoint(checkpoint);
     }
     std::string validate_checkpoint_file(const std::string& resolved_path) const override {
+        if (is_npu_model_dir(resolved_path)) return "";
         return llamacpp::ops()->validate_checkpoint_file(resolved_path);
     }
     // `1bit version` prints "1bit <version>".
