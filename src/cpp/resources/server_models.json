@@ -2641,7 +2641,7 @@
         "size": 0.0367
     },
     "Qwen3.6-35B-A3B-NPU-1bit": {
-        "checkpoint": "FastFlowLM/Qwen3.6-35B-A3B-NPU2",
+        "checkpoint": "1bit-MONSTER/Qwen3.6-35B-A3B-NPU",
         "recipe": "onebit",
         "recipe_options": {
             "onebit_backend": "npu"
