@@ -100,7 +100,10 @@ void OnebitServer::load(const std::string& model_name,
         throw std::runtime_error("1bit model '" + model_name + "' has no resolved checkpoint");
     }
     const std::string bin = onebit::resolve_binary(options.get_option("onebit_bin"));
-    std::string device = options.get_option("onebit_backend");
+    // Only a device someone chose. get_option() fills an unset *_backend with the first supported
+    // backend (vulkan), which would bypass 1bit serve's own routing: PrismML ternary and
+    // Hadamard-folded files go to HRX, and 1bit serve refuses them on --device vulkan.
+    std::string device = options.has_option("onebit_backend") ? options.get_option("onebit_backend").get<std::string>() : "";
     if (device.empty()) device = "auto";
     if (device == "cuda") device = "zinc";  // the engine reaches NVIDIA through its ZINC build
     const int backend_port = choose_port();
