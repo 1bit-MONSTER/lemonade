@@ -101,8 +101,8 @@ void OnebitServer::load(const std::string& model_name,
     }
     const std::string bin = onebit::resolve_binary(options.get_option("onebit_bin"));
     // Only a device someone chose. get_option() fills an unset *_backend with the first supported
-    // backend (vulkan), which would bypass 1bit serve's own routing: PrismML ternary and
-    // Hadamard-folded files go to HRX, and 1bit serve refuses them on --device vulkan.
+    // backend (hrx), which would bypass 1bit serve's own routing: an NPU model directory goes to
+    // the NPU, and a build without HRX serves on the CPU.
     std::string device = options.has_option("onebit_backend") ? options.get_option("onebit_backend").get<std::string>() : "";
     if (device.empty()) device = "auto";
     if (device == "cuda") device = "zinc";  // the engine reaches NVIDIA through its ZINC build
