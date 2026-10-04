@@ -105,7 +105,6 @@ void OnebitServer::load(const std::string& model_name,
     // the NPU, and a build without HRX serves on the CPU.
     std::string device = options.has_option("onebit_backend") ? options.get_option("onebit_backend").get<std::string>() : "";
     if (device.empty()) device = "auto";
-    if (device == "cuda") device = "zinc";  // the engine reaches NVIDIA through its ZINC build
     const int backend_port = choose_port();
     const int ctx_size = options.get_option("ctx_size");
 

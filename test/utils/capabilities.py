@@ -117,7 +117,7 @@ CAPABILITIES = {
             # Declared as measured on Strix Halo through HRX (llama-server behind 1bit serve; the
             # engine has no Vulkan build since its RFC #213 stage 3). The NPU route serves chat and completions only, and reranking on
             # HRX fails in HRX's JIT (docs/lemonade.md in 1bit-MONSTER/engine).
-            "backends": ["hrx", "npu", "cuda"],
+            "backends": ["hrx", "npu"],
             "supports": {
                 "chat_completions": True,
                 "chat_completions_streaming": True,
