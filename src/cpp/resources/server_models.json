@@ -2660,5 +2660,66 @@
             "reasoning"
         ],
         "size": 5.57
+    },
+    "ZAYA1-8B-PM-1bit": {
+        "checkpoint": "1bit-MONSTER/ZAYA1-8B-GGUF:zaya1-8b-Q4_K_M.gguf",
+        "recipe": "onebit",
+        "recipe_options": {
+            "onebit_pm": true
+        },
+        "labels": [
+            "chat",
+            "tool-calling"
+        ],
+        "size": 5.57
+    },
+    "Qwen2.5-Coder-7B-Instruct-1bit": {
+        "checkpoint": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+        "recipe": "onebit",
+        "labels": [
+            "chat",
+            "coding",
+            "tool-calling"
+        ],
+        "size": 4.68
+    },
+    "Qwen2.5-Coder-1.5B-Instruct-1bit": {
+        "checkpoint": "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF:qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+        "recipe": "onebit",
+        "labels": [
+            "chat",
+            "coding"
+        ],
+        "size": 1.12
+    },
+    "Qwen3-Coder-30B-A3B-Instruct-1bit": {
+        "checkpoint": "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF:Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
+        "recipe": "onebit",
+        "labels": [
+            "chat",
+            "coding",
+            "tool-calling"
+        ],
+        "size": 18.6
+    },
+    "Qwen3.8-27B-1bit": {
+        "checkpoint": "unsloth/Qwen3.8-27B-GGUF:Qwen3.8-27B-UD-Q4_K_XL.gguf",
+        "recipe": "onebit",
+        "labels": [
+            "chat",
+            "reasoning",
+            "tool-calling"
+        ],
+        "size": 17.6
+    },
+    "gpt-oss-20b-mxfp4-1bit": {
+        "checkpoint": "ggml-org/gpt-oss-20b-GGUF:gpt-oss-20b-MXFP4.gguf",
+        "recipe": "onebit",
+        "labels": [
+            "chat",
+            "reasoning",
+            "tool-calling"
+        ],
+        "size": 12.1
     }
 }

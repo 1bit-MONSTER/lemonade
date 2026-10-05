@@ -35,6 +35,10 @@ inline const BackendDescriptor descriptor = {
          "Path to the 1bit binary (default: $LEMONADE_ONEBIT_BIN, then 1bit on PATH)", "1bit Options"},
         {"onebit_args", "--onebit-args", "", "ARGS",
          "Extra arguments appended to the 1bit serve command line", "1bit Options"},
+        {"onebit_pm", "--onebit-pm", false, "BOOL",
+         "Project Manager: the model answers or delegates each chat to an expert model this Lemonade runs (1bit serve --pm)", "1bit Options"},
+        {"onebit_pm_experts", "--onebit-pm-experts", "", "PATH",
+         "Experts file for --onebit-pm (default: the engine's built-in config/pm-experts.json)", "1bit Options"},
     },
     /*support*/ {
         {"hrx", {"linux"}, {{"amd_gpu", {"gfx1151"}}}, "Strix Halo iGPU through AMD's HRX"},

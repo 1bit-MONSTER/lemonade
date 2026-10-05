@@ -482,6 +482,8 @@ The following options are available depending on the recipe being used:
 | `--onebit BACKEND` | Device 1bit serve runs the model on: auto, hrx or npu | Auto-detected |
 | `--onebit-bin PATH` | Path to the 1bit binary (default: $LEMONADE_ONEBIT_BIN, then 1bit on PATH) | `""` |
 | `--onebit-args ARGS` | Extra arguments appended to the 1bit serve command line | `""` |
+| `--onebit-pm BOOL` | Project Manager: the model answers or delegates each chat to an expert model this Lemonade runs (1bit serve --pm) | `false` |
+| `--onebit-pm-experts PATH` | Experts file for --onebit-pm (default: the engine's built-in config/pm-experts.json) | `""` |
 <!-- END GENERATED: cli-recipe-options -->
 **Notes:**
 - Unspecified options will use the backend's default values

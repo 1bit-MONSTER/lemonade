@@ -79,6 +79,18 @@ public:
     }
 };
 
+// A BOOL recipe option as written in a catalog entry (true), a user registration or the CLI
+// ("true", "1", "yes", "on").
+bool option_true(const nlohmann::json& v) {
+    if (v.is_boolean()) return v.get<bool>();
+    if (v.is_number()) return v.get<double>() != 0;
+    if (v.is_string()) {
+        const std::string s = v.get<std::string>();
+        return s == "true" || s == "1" || s == "yes" || s == "on";
+    }
+    return false;
+}
+
 std::vector<std::string> split_args(const std::string& s) {
     std::vector<std::string> out;
     std::istringstream in(s);
@@ -120,6 +132,20 @@ void OnebitServer::load(const std::string& model_name,
     // on the device asked for); chat models need no flag.
     if (model_info.type == ModelType::EMBEDDING) argv.push_back("--embedding");
     if (model_info.type == ModelType::RERANKING) argv.push_back("--reranking");
+    // onebit_pm (a built-in entry's recipe_options, or a user registration's): the model is the
+    // engine's Project Manager, delegating to expert models it asks this Lemonade to run.
+    if (option_true(options.get_option("onebit_pm"))) {
+        argv.push_back("--pm");
+        if (!lemonade_url_.empty()) {
+            argv.push_back("--lemonade-url");
+            argv.push_back(lemonade_url_);
+        }
+        const std::string experts = options.get_option("onebit_pm_experts");
+        if (!experts.empty()) {
+            argv.push_back("--pm-experts");
+            argv.push_back(experts);
+        }
+    }
     for (auto& a : split_args(options.get_option("onebit_args"))) argv.push_back(std::move(a));
 
     const bool inherit_output = (log_level_ == "info") || is_debug();
@@ -144,7 +170,9 @@ std::string resolve_binary(const std::string& onebit_bin_option) {
 }
 
 std::unique_ptr<WrappedServer> create(const BackendContext& ctx) {
-    return make_server<OnebitServer>(ctx);
+    auto server = std::make_unique<OnebitServer>(ctx.log_level, ctx.model_manager, ctx.backend_manager);
+    server->set_lemonade_url(ctx.api_url);
+    return server;
 }
 
 // Installed separately: nothing for Lemonade to download.
