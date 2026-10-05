@@ -2651,5 +2651,14 @@
             "reasoning"
         ],
         "size": 22.9
+    },
+    "ZAYA1-8B-1bit": {
+        "checkpoint": "1bit-MONSTER/ZAYA1-8B-GGUF:zaya1-8b-Q4_K_M.gguf",
+        "recipe": "onebit",
+        "labels": [
+            "chat",
+            "reasoning"
+        ],
+        "size": 5.57
     }
 }
