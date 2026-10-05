@@ -16,7 +16,7 @@ the generator instead. Prose outside the markers is preserved. -->
 | `llamacpp` | Llama.cpp GPU | yes | yes | cpu, cuda, metal, rocm, system, vulkan |
 | `llamacpp-hrx` | HRX GPU (experimental) | no | yes | hrx |
 | `moonshine` | Moonshine | no | no | cpu |
-| `onebit` | 1bit engine (NPU, Vulkan, HRX, CUDA) | yes | yes | cuda, hrx, npu, vulkan |
+| `onebit` | 1bit engine (NPU, HRX) | yes | yes | hrx, npu |
 | `onnxruntime` | ONNX Runtime | no | no | cpu |
 | `openmoss` | OpenMOSS TTS | yes | no | cuda, vulkan |
 | `ryzenai-llm` | Ryzen AI LLM | no | yes | npu |
@@ -50,10 +50,8 @@ the generator instead. Prose outside the markers is preserved. -->
 | `moonshine` | cpu | windows | cpu (x86_64) |
 | `moonshine` | cpu | linux | cpu (arm64, x86_64) |
 | `moonshine` | cpu | macos | cpu (arm64) |
-| `onebit` | vulkan | linux | amd_gpu |
 | `onebit` | hrx | linux | amd_gpu (gfx1151) |
 | `onebit` | npu | linux | amd_npu (XDNA2) |
-| `onebit` | cuda | linux | nvidia_gpu (sm_120, sm_89) |
 | `onnxruntime` | cpu | windows | cpu (x86_64) |
 | `onnxruntime` | cpu | linux | cpu (arm64, x86_64) |
 | `onnxruntime` | cpu | macos | cpu (arm64) |
@@ -132,12 +130,12 @@ the generator instead. Prose outside the markers is preserved. -->
 |--------|----------|------|---------|-------------|
 | `moonshine_args` | `--moonshine-args` | ARGS | "" | Custom arguments to pass to moonshine-server |
 
-#### `onebit` — 1bit engine (NPU, Vulkan, HRX, CUDA)
+#### `onebit` — 1bit engine (NPU, HRX)
 
 | Option | CLI flag | Type | Default | Description |
 |--------|----------|------|---------|-------------|
 | `ctx_size` | `--ctx-size` | SIZE | -1 | Context size for the model |
-| `onebit_backend` | `--onebit` | BACKEND | "" | Device 1bit serve runs the model on: auto, vulkan, hrx, npu or cuda (NVIDIA, through ZINC) |
+| `onebit_backend` | `--onebit` | BACKEND | "" | Device 1bit serve runs the model on: auto, hrx or npu |
 | `onebit_bin` | `--onebit-bin` | PATH | "" | Path to the 1bit binary (default: $LEMONADE_ONEBIT_BIN, then 1bit on PATH) |
 | `onebit_args` | `--onebit-args` | ARGS | "" | Extra arguments appended to the 1bit serve command line |
 

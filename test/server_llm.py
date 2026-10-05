@@ -17,7 +17,7 @@ Usage:
     python server_llm.py --wrapped-server ryzenai --backend hybrid
     python server_llm.py --wrapped-server ryzenai --backend npu
     python server_llm.py --wrapped-server flm
-    python server_llm.py --wrapped-server onebit --backend vulkan
+    python server_llm.py --wrapped-server onebit --backend hrx
 """
 
 import asyncio
