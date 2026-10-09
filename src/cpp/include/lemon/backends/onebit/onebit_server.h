@@ -20,6 +20,13 @@ public:
               const ModelInfo& model_info,
               const RecipeOptions& options,
               bool do_not_upgrade = false) override;
+
+    // This Lemonade's API base URL: `1bit serve --pm` (recipe option onebit_pm) asks it to run
+    // the expert models it delegates to (--lemonade-url).
+    void set_lemonade_url(std::string url) { lemonade_url_ = std::move(url); }
+
+private:
+    std::string lemonade_url_;
 };
 
 namespace onebit {

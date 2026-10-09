@@ -25,6 +25,8 @@ struct BackendContext {
     BackendManager* backend_manager = nullptr;
     CloudProviderRegistry* cloud_registry = nullptr;
     const ModelInfo* model_info = nullptr;  // for per-create setup (cloud provider, ryzenai model path)
+    std::string api_url;  // this Lemonade's own API base (http://host:port), for a backend that calls back
+                          // into Lemonade (the 1bit Project Manager asks it to run expert models)
 };
 
 using BackendCreateFn = std::unique_ptr<WrappedServer> (*)(const BackendContext&);

@@ -686,6 +686,11 @@ std::unique_ptr<WrappedServer> Router::create_backend_server(const ModelInfo& mo
     ctx.backend_manager = backend_manager_;
     ctx.cloud_registry = cloud_registry_;
     ctx.model_info = &model_info;
+    // A bind-all host is not an address a backend can connect to; loopback reaches this server.
+    std::string api_host = config_->host();
+    if (api_host.empty() || api_host == "0.0.0.0" || api_host == "::" || api_host == "[::]") api_host = "127.0.0.1";
+    else if (api_host.find(':') != std::string::npos && api_host.front() != '[') api_host = "[" + api_host + "]";
+    ctx.api_url = "http://" + api_host + ":" + std::to_string(config_->port());
 
     // The backend registry binds each recipe to its create() (see LEMON_BACKENDS).
     std::unique_ptr<WrappedServer> new_server = backends::create_server(model_info.recipe, ctx);
