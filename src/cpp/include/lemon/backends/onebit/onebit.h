@@ -8,8 +8,8 @@
 // llamacpp backends serve every other GPU. Lemonade downloads and resolves
 // GGUF checkpoints exactly as for llamacpp, launches `1bit serve` on the
 // selected backend, and forwards OpenAI requests to it. `1bit` is installed
-// separately (like flm); its path comes from the onebit_bin option, then
-// $LEMONADE_ONEBIT_BIN, then `1bit` on PATH.
+// separately (like flm); its path comes from $LEMONADE_ONEBIT_BIN (the service
+// environment), then `1bit` on PATH. It is never taken from a load request.
 #include "lemon/backends/backend_descriptor.h"
 
 #include <nlohmann/json.hpp>
@@ -31,10 +31,8 @@ inline const BackendDescriptor descriptor = {
     /*options*/ {
         {"onebit_backend", "--onebit", "", "BACKEND",
          "Device 1bit serve runs the model on: auto, hrx or npu", "1bit Options"},
-        {"onebit_bin", "--onebit-bin", "", "PATH",
-         "Path to the 1bit binary (default: $LEMONADE_ONEBIT_BIN, then 1bit on PATH)", "1bit Options"},
         {"onebit_args", "--onebit-args", "", "ARGS",
-         "Extra arguments appended to the 1bit serve command line", "1bit Options"},
+         "Extra tuning arguments for 1bit serve (allow-listed; see onebit::allowed_arg_flags)", "1bit Options"},
         {"onebit_pm", "--onebit-pm", false, "BOOL",
          "Project Manager: the model answers or delegates each chat to an expert model this Lemonade runs (1bit serve --pm)", "1bit Options"},
         {"onebit_pm_experts", "--onebit-pm-experts", "", "PATH",
