@@ -4,6 +4,7 @@
 #include "lemon/model_manager.h"
 
 #include <memory>
+#include <set>
 #include <string>
 
 namespace lemon {
@@ -31,8 +32,16 @@ private:
 
 namespace onebit {
 
-// The 1bit binary: the onebit_bin option, else $LEMONADE_ONEBIT_BIN, else `1bit`.
-std::string resolve_binary(const std::string& onebit_bin_option);
+// The 1bit binary: $LEMONADE_ONEBIT_BIN, else `1bit` on PATH. Requests cannot choose it.
+std::string resolve_binary();
+
+// onebit_args takes only these 1bit serve tuning flags (a flag may carry `=value`).
+// Flags that set an address, a port, another server's URL, or a binary, library,
+// model or file path to load are refused: Lemonade sets the ones it needs itself.
+const std::set<std::string>& allowed_arg_flags();
+
+// "" when every flag in onebit_args is allowed, else the reason it is refused.
+std::string validate_args(const std::string& onebit_args);
 
 std::unique_ptr<WrappedServer> create(const BackendContext& ctx);
 const BackendSpec* spec();

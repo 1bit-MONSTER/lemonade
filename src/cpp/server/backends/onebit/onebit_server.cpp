@@ -4,11 +4,12 @@
 #include "lemon/backends/backend_ops.h"
 #include "lemon/backends/onebit/onebit.h"
 #include "lemon/utils/process_manager.h"
+#include "lemon/utils/path_utils.h"
+#include <set>
+#include <unistd.h>
 
 #include <lemon/utils/aixlog.hpp>
 
-#include <array>
-#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
@@ -57,15 +58,16 @@ public:
         if (is_npu_model_dir(resolved_path)) return "";
         return llamacpp::ops()->validate_checkpoint_file(resolved_path);
     }
-    // `1bit version` prints "1bit <version>".
+    // `1bit version` prints "1bit <version>". Run directly, not through a shell.
     std::string resolve_version(const std::string&, const std::string& file_version) const override {
         if (!file_version.empty() && file_version != "unknown") return file_version;
-        const std::string bin = onebit::resolve_binary("");
-        std::array<char, 128> buf{};
+        const std::string bin = onebit::resolve_binary();
         std::string out;
-        if (FILE* p = ::popen((bin + " version 2>/dev/null").c_str(), "r")) {
-            while (std::fgets(buf.data(), int(buf.size()), p)) out += buf.data();
-            ::pclose(p);
+        try {
+            utils::ProcessManager::run_process_with_output(
+                bin, {"version"}, [&out](const std::string& line) { out += line; return true; }, "", 10, false);
+        } catch (const std::exception&) {
+            return "unknown";
         }
         const auto sp = out.find(' ');
         std::string v = sp == std::string::npos ? "" : out.substr(sp + 1);
@@ -73,8 +75,14 @@ public:
         return v.empty() ? "unknown" : v;
     }
     InstallCheck check_install(const std::string&, bool) const override {
-        const std::string bin = onebit::resolve_binary("");
-        const bool found = std::system((std::string("command -v ") + bin + " >/dev/null 2>&1").c_str()) == 0;
+        const std::string bin = onebit::resolve_binary();
+        bool found = false;
+        if (bin.find('/') != std::string::npos) {
+            std::error_code ec;
+            found = std::filesystem::is_regular_file(bin, ec) && ::access(bin.c_str(), X_OK) == 0;
+        } else {
+            found = !utils::find_executable_in_path(bin).empty();
+        }
         return {found, found ? "" : "the 1bit binary was not found (github.com/1bit-MONSTER/engine)"};
     }
 };
@@ -111,7 +119,7 @@ void OnebitServer::load(const std::string& model_name,
     if (model.empty()) {
         throw std::runtime_error("1bit model '" + model_name + "' has no resolved checkpoint");
     }
-    const std::string bin = onebit::resolve_binary(options.get_option("onebit_bin"));
+    const std::string bin = onebit::resolve_binary();
     // Only a device someone chose. get_option() fills an unset *_backend with the first supported
     // backend (hrx), which would bypass 1bit serve's own routing: an NPU model directory goes to
     // the NPU, and a build without HRX serves on the CPU.
@@ -146,7 +154,11 @@ void OnebitServer::load(const std::string& model_name,
             argv.push_back(experts);
         }
     }
-    for (auto& a : split_args(options.get_option("onebit_args"))) argv.push_back(std::move(a));
+    const std::string extra_args = options.get_option("onebit_args");
+    if (const std::string err = onebit::validate_args(extra_args); !err.empty()) {
+        throw std::invalid_argument("Invalid onebit_args for '" + model_name + "': " + err);
+    }
+    for (auto& a : split_args(extra_args)) argv.push_back(std::move(a));
 
     const bool inherit_output = (log_level_ == "info") || is_debug();
     set_process_handle(utils::ProcessManager::start_process(bin, argv, "", inherit_output, true, {}), bin, argv);
@@ -163,10 +175,39 @@ void OnebitServer::load(const std::string& model_name,
 
 namespace onebit {
 
-std::string resolve_binary(const std::string& onebit_bin_option) {
-    if (!onebit_bin_option.empty()) return onebit_bin_option;
+std::string resolve_binary() {
     if (const char* env = std::getenv("LEMONADE_ONEBIT_BIN"); env && *env) return env;
     return "1bit";
+}
+
+const std::set<std::string>& allowed_arg_flags() {
+    static const std::set<std::string> flags = {
+        "-fa", "--flash-attn", "--parallel", "--mtp", "--mtp-max", "--mtp-p-min", "--spec-type",
+        "--spec-draft-n-max", "--spec-draft-p-min", "--moe-prefetch", "--moe-subst", "--load-mode",
+        "--no-repack", "--no-host", "--strict-device", "--placement-report", "--watchdog",
+        "--watchdog-prompt-tps", "--no-mem-check", "--hrx-cwsr-placement", "--npu-opt", "--route-policy",
+        "--laya", "--pm-router", "--no-recipes", "--ssd-streaming", "--jinja", "--metrics", "--family",
+    };
+    return flags;
+}
+
+std::string validate_args(const std::string& onebit_args) {
+    bool after_flag = false;
+    for (const auto& tok : split_args(onebit_args)) {
+        if (!tok.empty() && tok[0] == '-') {
+            const std::string flag = tok.substr(0, tok.find('='));
+            if (!allowed_arg_flags().count(flag)) {
+                return "'" + flag + "' is not an allowed 1bit serve tuning flag "
+                       "(addresses, ports, URLs and binary or file paths are set by Lemonade)";
+            }
+            after_flag = tok.find('=') == std::string::npos;
+        } else if (!after_flag) {
+            return "'" + tok + "' does not follow a flag";
+        } else {
+            after_flag = false;
+        }
+    }
+    return "";
 }
 
 std::unique_ptr<WrappedServer> create(const BackendContext& ctx) {
