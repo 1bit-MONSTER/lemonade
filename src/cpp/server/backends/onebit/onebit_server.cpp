@@ -15,6 +15,7 @@
 #include <memory>
 #include <sstream>
 #include <stdexcept>
+#include <utility>
 #include <string>
 #include <vector>
 
@@ -106,6 +107,71 @@ std::vector<std::string> split_args(const std::string& s) {
     return out;
 }
 
+// One hop (engine docs/serve.md, "One hop from Lemonade"): for a GGUF, `1bit serve ... --print-backend`
+// makes every check serve makes before a load (architecture, memory, recipes) and prints the
+// llama-server it would start, on the port Lemonade chose. Lemonade starts that server itself and
+// forwards to it directly, as for llamacpp: one HTTP hop and two processes instead of two and three.
+// $LEMONADE_ONEBIT_ONE_HOP=0 keeps `1bit serve` in the request path.
+struct BackendPlan {
+    enum class Kind { Direct, ServeOnly, Refused } kind = Kind::ServeOnly;
+    std::string executable;
+    std::vector<std::string> args;
+    std::vector<std::pair<std::string, std::string>> env;
+    int exit_code = 0;
+};
+
+bool one_hop_enabled() {
+    const char* v = std::getenv("LEMONADE_ONEBIT_ONE_HOP");
+    return !v || std::string(v) != "0";
+}
+
+BackendPlan plan_backend(const std::string& bin, std::vector<std::string> serve_argv) {
+    BackendPlan plan;
+    serve_argv.push_back("--print-backend");
+    std::string json_line;
+    int rc = -1;
+    try {
+        // stdout only: serve's notes (memory, recipes) go to its stderr, which is lemond's log
+        rc = utils::ProcessManager::run_process_with_output(
+            bin, serve_argv,
+            [&json_line](const std::string& line) {
+                if (!line.empty() && line[0] == '{') json_line = line;
+                return true;
+            },
+            "", 60, false);
+    } catch (const std::exception& e) {
+        LOG(WARNING, "1bit") << "one hop: " << bin << " --print-backend did not run (" << e.what()
+                             << "); serving through 1bit serve" << std::endl;
+        return plan;
+    }
+    plan.exit_code = rc;
+    if (rc == 3) {  // does not fit: serve would refuse the same load with the same line
+        plan.kind = BackendPlan::Kind::Refused;
+        return plan;
+    }
+    if (rc != 0) {  // 5: the route needs serve (NPU, --pm, ...); anything else: an engine without one hop
+        if (rc != 5) {
+            LOG(INFO, "1bit") << "one hop: --print-backend exited " << rc << "; serving through 1bit serve" << std::endl;
+        }
+        return plan;
+    }
+    try {
+        const auto j = nlohmann::json::parse(json_line);
+        const auto argv = j.at("argv").get<std::vector<std::string>>();
+        if (argv.empty()) return plan;
+        plan.executable = argv[0];
+        plan.args.assign(argv.begin() + 1, argv.end());
+        if (j.contains("env") && j["env"].is_object()) {
+            for (const auto& [k, v] : j["env"].items()) plan.env.emplace_back(k, v.get<std::string>());
+        }
+        plan.kind = BackendPlan::Kind::Direct;
+    } catch (const std::exception& e) {
+        LOG(WARNING, "1bit") << "one hop: unreadable --print-backend output (" << e.what()
+                             << "); serving through 1bit serve" << std::endl;
+    }
+    return plan;
+}
+
 }  // namespace
 
 void OnebitServer::load(const std::string& model_name,
@@ -161,16 +227,33 @@ void OnebitServer::load(const std::string& model_name,
     for (auto& a : split_args(extra_args)) argv.push_back(std::move(a));
 
     const bool inherit_output = (log_level_ == "info") || is_debug();
-    set_process_handle(utils::ProcessManager::start_process(bin, argv, "", inherit_output, true, {}), bin, argv);
+    std::error_code ec;
+    BackendPlan plan;
+    if (one_hop_enabled() && std::filesystem::is_regular_file(model, ec) && !option_true(options.get_option("onebit_pm"))) {
+        plan = plan_backend(bin, argv);
+    }
+    if (plan.kind == BackendPlan::Kind::Refused) {
+        throw std::runtime_error("1bit serve refused '" + model_name + "' (exit " + std::to_string(plan.exit_code) +
+                                 "; its reason is in the log above)");
+    }
+    if (plan.kind == BackendPlan::Kind::Direct) {
+        LOG(INFO, "1bit") << "one hop: " << plan.executable << " on port " << backend_port << std::endl;
+        set_process_handle(utils::ProcessManager::start_process(plan.executable, plan.args, "", inherit_output, true, plan.env),
+                           plan.executable, plan.args);
+    } else {
+        set_process_handle(utils::ProcessManager::start_process(bin, argv, "", inherit_output, true, {}), bin, argv);
+    }
 
     if (!wait_for_ready("/health")) {
         const ProcessHandle handle = consume_process_handle_for_cleanup();
         if (has_process_handle(handle)) {
             utils::ProcessManager::stop_process(handle);
         }
-        throw std::runtime_error("1bit serve failed to start for '" + model_name + "' (" + bin + ")");
+        const std::string what = plan.kind == BackendPlan::Kind::Direct ? plan.executable : bin;
+        throw std::runtime_error("1bit serve failed to start for '" + model_name + "' (" + what + ")");
     }
-    LOG(DEBUG, "1bit") << "Model loaded on port " << get_backend_port() << " (" << device << ")" << std::endl;
+    LOG(DEBUG, "1bit") << "Model loaded on port " << get_backend_port() << " (" << device
+                       << (plan.kind == BackendPlan::Kind::Direct ? ", one hop" : "") << ")" << std::endl;
 }
 
 namespace onebit {

@@ -7,7 +7,10 @@
 // Vulkan, ROCm, ZINC or CUDA build (its RFC #213 stage 3 and the core strip). Lemonade's own
 // llamacpp backends serve every other GPU. Lemonade downloads and resolves
 // GGUF checkpoints exactly as for llamacpp, launches `1bit serve` on the
-// selected backend, and forwards OpenAI requests to it. `1bit` is installed
+// selected backend, and forwards OpenAI requests to it. For a GGUF file it first
+// asks `1bit serve ... --print-backend` for the llama-server serve would run and
+// starts that directly (one hop; $LEMONADE_ONEBIT_ONE_HOP=0 turns it off; the
+// engine's docs/serve.md, "One hop from Lemonade"). `1bit` is installed
 // separately (like flm); its path comes from $LEMONADE_ONEBIT_BIN (the service
 // environment), then `1bit` on PATH. It is never taken from a load request.
 #include "lemon/backends/backend_descriptor.h"
