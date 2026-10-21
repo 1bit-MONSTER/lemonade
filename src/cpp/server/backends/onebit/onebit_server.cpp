@@ -3,6 +3,7 @@
 
 #include "lemon/backends/backend_ops.h"
 #include "lemon/backends/onebit/onebit.h"
+#include "lemon/utils/http_client.h"
 #include "lemon/utils/process_manager.h"
 #include "lemon/utils/path_utils.h"
 #include <set>
@@ -10,6 +11,7 @@
 
 #include <lemon/utils/aixlog.hpp>
 
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
@@ -117,6 +119,10 @@ struct BackendPlan {
     std::string executable;
     std::vector<std::string> args;
     std::vector<std::pair<std::string, std::string>> env;
+    // {path, body}: the request `1bit serve` sends a backend once it is ready, so the first client
+    // request does not pay HRX's one-time per-shape program build (engine #492); absent off HRX and
+    // with ONEBIT_NO_WARMUP=1 in this process's environment, which --print-backend inherits
+    nlohmann::json warmup;
     int exit_code = 0;
 };
 
@@ -164,12 +170,36 @@ BackendPlan plan_backend(const std::string& bin, std::vector<std::string> serve_
         if (j.contains("env") && j["env"].is_object()) {
             for (const auto& [k, v] : j["env"].items()) plan.env.emplace_back(k, v.get<std::string>());
         }
+        if (j.contains("warmup") && j["warmup"].is_object() && j["warmup"].contains("path") &&
+            j["warmup"]["path"].is_string() && j["warmup"].contains("body") && j["warmup"]["body"].is_object()) {
+            plan.warmup = j["warmup"];
+        }
         plan.kind = BackendPlan::Kind::Direct;
     } catch (const std::exception& e) {
         LOG(WARNING, "1bit") << "one hop: unreadable --print-backend output (" << e.what()
                              << "); serving through 1bit serve" << std::endl;
     }
     return plan;
+}
+
+// One hop: what `1bit serve` did between "backend ready" and its first client request. A failed
+// warm-up only costs the first request its speed, so it is logged, not fatal (as in serve).
+void send_warmup(int port, const nlohmann::json& warmup) {
+    const std::string url = "http://127.0.0.1:" + std::to_string(port) + warmup["path"].get<std::string>();
+    const auto t0 = std::chrono::steady_clock::now();
+    try {
+        const auto r = utils::HttpClient::post(url, warmup["body"].dump(), {{"Content-Type", "application/json"}}, 600,
+                                               utils::HttpSecurityPolicy::TrustedLoopback);
+        const long ms = static_cast<long>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                              std::chrono::steady_clock::now() - t0).count());
+        if (r.status_code == 200) {
+            LOG(INFO, "1bit") << "one hop: warm-up request took " << ms << " ms" << std::endl;
+        } else {
+            LOG(WARNING, "1bit") << "one hop: warm-up request failed (HTTP " << r.status_code << ")" << std::endl;
+        }
+    } catch (const std::exception& e) {
+        LOG(WARNING, "1bit") << "one hop: warm-up request failed (" << e.what() << ")" << std::endl;
+    }
 }
 
 }  // namespace
@@ -252,6 +282,8 @@ void OnebitServer::load(const std::string& model_name,
         const std::string what = plan.kind == BackendPlan::Kind::Direct ? plan.executable : bin;
         throw std::runtime_error("1bit serve failed to start for '" + model_name + "' (" + what + ")");
     }
+    // before load() returns, so Lemonade marks the model loaded only after it
+    if (plan.kind == BackendPlan::Kind::Direct && plan.warmup.is_object()) send_warmup(backend_port, plan.warmup);
     LOG(DEBUG, "1bit") << "Model loaded on port " << get_backend_port() << " (" << device
                        << (plan.kind == BackendPlan::Kind::Direct ? ", one hop" : "") << ")" << std::endl;
 }
@@ -270,6 +302,7 @@ const std::set<std::string>& allowed_arg_flags() {
         "--no-repack", "--no-host", "--strict-device", "--placement-report", "--watchdog",
         "--watchdog-prompt-tps", "--no-mem-check", "--hrx-cwsr-placement", "--npu-opt", "--route-policy",
         "--laya", "--pm-router", "--no-recipes", "--ssd-streaming", "--jinja", "--metrics", "--family",
+        "--no-mtp",
     };
     return flags;
 }
