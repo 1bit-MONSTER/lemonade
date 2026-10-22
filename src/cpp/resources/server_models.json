@@ -3024,6 +3024,39 @@
         "recipe_options": {
             "onebit_backend": "npu"
         },
+    "Qwen3-0.6B-NPU-1bit": {
+        "checkpoint": "FastFlowLM/Qwen3-0.6B-NPU2",
+        "recipe": "onebit",
+        "recipe_options": {
+            "onebit_backend": "npu"
+        },
+        "labels": [
+            "chat"
+        ],
+        "size": 0.66
+    },
+    "Qwen3-1.7B-NPU-1bit": {
+        "checkpoint": "FastFlowLM/Qwen3-1.7B-NPU2",
+        "recipe": "onebit",
+        "recipe_options": {
+            "onebit_backend": "npu"
+        },
+        "labels": [
+            "chat"
+        ],
+        "size": 1.6
+    },
+    "Qwen3-4B-NPU-1bit": {
+        "checkpoint": "FastFlowLM/Qwen3-4B-NPU2",
+        "recipe": "onebit",
+        "recipe_options": {
+            "onebit_backend": "npu"
+        },
+        "labels": [
+            "chat"
+        ],
+        "size": 3.1
+    },
         "labels": [
             "chat",
             "reasoning"
