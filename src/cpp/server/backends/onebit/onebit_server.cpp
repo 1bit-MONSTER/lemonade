@@ -119,10 +119,12 @@ struct BackendPlan {
     std::string executable;
     std::vector<std::string> args;
     std::vector<std::pair<std::string, std::string>> env;
-    // {path, body}: the request `1bit serve` sends a backend once it is ready, so the first client
-    // request does not pay HRX's one-time per-shape program build (engine #492); absent off HRX and
-    // with ONEBIT_NO_WARMUP=1 in this process's environment, which --print-backend inherits
-    nlohmann::json warmup;
+    // [{path, body}]: the requests `1bit serve` sends a backend once it is ready, in order, so the first
+    // client request does not pay HRX's one-time costs (engine #492: per-shape programs; the second
+    // request builds the small-batch weight layout a short chat prompt needs). The plan's "warmups",
+    // or its single "warmup" from an older engine; none off HRX and with ONEBIT_NO_WARMUP=1 in this
+    // process's environment, which --print-backend inherits
+    std::vector<nlohmann::json> warmups;
     int exit_code = 0;
 };
 
@@ -170,9 +172,16 @@ BackendPlan plan_backend(const std::string& bin, std::vector<std::string> serve_
         if (j.contains("env") && j["env"].is_object()) {
             for (const auto& [k, v] : j["env"].items()) plan.env.emplace_back(k, v.get<std::string>());
         }
-        if (j.contains("warmup") && j["warmup"].is_object() && j["warmup"].contains("path") &&
-            j["warmup"]["path"].is_string() && j["warmup"].contains("body") && j["warmup"]["body"].is_object()) {
-            plan.warmup = j["warmup"];
+        auto request = [](const nlohmann::json& w) {
+            return w.is_object() && w.contains("path") && w["path"].is_string() && w.contains("body") &&
+                   w["body"].is_object();
+        };
+        if (j.contains("warmups") && j["warmups"].is_array()) {
+            for (const auto& w : j["warmups"]) {
+                if (request(w)) plan.warmups.push_back(w);
+            }
+        } else if (j.contains("warmup") && request(j["warmup"])) {
+            plan.warmups.push_back(j["warmup"]);
         }
         plan.kind = BackendPlan::Kind::Direct;
     } catch (const std::exception& e) {
@@ -193,12 +202,15 @@ void send_warmup(int port, const nlohmann::json& warmup) {
         const long ms = static_cast<long>(std::chrono::duration_cast<std::chrono::milliseconds>(
                                               std::chrono::steady_clock::now() - t0).count());
         if (r.status_code == 200) {
-            LOG(INFO, "1bit") << "one hop: warm-up request took " << ms << " ms" << std::endl;
+            LOG(INFO, "1bit") << "one hop: warm-up request " << warmup["path"].get<std::string>() << " took " << ms
+                              << " ms" << std::endl;
         } else {
-            LOG(WARNING, "1bit") << "one hop: warm-up request failed (HTTP " << r.status_code << ")" << std::endl;
+            LOG(WARNING, "1bit") << "one hop: warm-up request " << warmup["path"].get<std::string>()
+                                 << " failed (HTTP " << r.status_code << ")" << std::endl;
         }
     } catch (const std::exception& e) {
-        LOG(WARNING, "1bit") << "one hop: warm-up request failed (" << e.what() << ")" << std::endl;
+        LOG(WARNING, "1bit") << "one hop: warm-up request " << warmup["path"].get<std::string>() << " failed ("
+                             << e.what() << ")" << std::endl;
     }
 }
 
@@ -283,7 +295,9 @@ void OnebitServer::load(const std::string& model_name,
         throw std::runtime_error("1bit serve failed to start for '" + model_name + "' (" + what + ")");
     }
     // before load() returns, so Lemonade marks the model loaded only after it
-    if (plan.kind == BackendPlan::Kind::Direct && plan.warmup.is_object()) send_warmup(backend_port, plan.warmup);
+    if (plan.kind == BackendPlan::Kind::Direct) {
+        for (const auto& w : plan.warmups) send_warmup(backend_port, w);
+    }
     LOG(DEBUG, "1bit") << "Model loaded on port " << get_backend_port() << " (" << device
                        << (plan.kind == BackendPlan::Kind::Direct ? ", one hop" : "") << ")" << std::endl;
 }
