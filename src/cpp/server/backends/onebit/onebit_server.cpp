@@ -4,6 +4,7 @@
 #include "lemon/backends/backend_ops.h"
 #include "lemon/backends/onebit/onebit.h"
 #include "lemon/utils/http_client.h"
+#include "lemon/server_process.h"
 #include "lemon/utils/process_manager.h"
 #include "lemon/utils/path_utils.h"
 #include <set>
@@ -278,21 +279,23 @@ void OnebitServer::load(const std::string& model_name,
         throw std::runtime_error("1bit serve refused '" + model_name + "' (exit " + std::to_string(plan.exit_code) +
                                  "; its reason is in the log above)");
     }
+    // start_server() runs the process, waits for /health and starts the backend watchdog; it
+    // throws with the process stopped when the server exits, the load is cancelled or 600 s pass.
+    ServerCommand command;
     if (plan.kind == BackendPlan::Kind::Direct) {
         LOG(INFO, "1bit") << "one hop: " << plan.executable << " on port " << backend_port << std::endl;
-        set_process_handle(utils::ProcessManager::start_process(plan.executable, plan.args, "", inherit_output, true, plan.env),
-                           plan.executable, plan.args);
+        command.program = plan.executable;
+        command.args = plan.args;
+        command.env = plan.env;
     } else {
-        set_process_handle(utils::ProcessManager::start_process(bin, argv, "", inherit_output, true, {}), bin, argv);
+        command.program = bin;
+        command.args = argv;
     }
-
-    if (!wait_for_ready("/health")) {
-        const ProcessHandle handle = consume_process_handle_for_cleanup();
-        if (has_process_handle(handle)) {
-            utils::ProcessManager::stop_process(handle);
-        }
-        const std::string what = plan.kind == BackendPlan::Kind::Direct ? plan.executable : bin;
-        throw std::runtime_error("1bit serve failed to start for '" + model_name + "' (" + what + ")");
+    command.port = backend_port;
+    try {
+        start_server(std::make_unique<NativeProcess>(ProcessOutput{inherit_output, true}), command);
+    } catch (const std::runtime_error& e) {
+        throw std::runtime_error("1bit serve failed to start for '" + model_name + "' (" + command.program + "): " + e.what());
     }
     // before load() returns, so Lemonade marks the model loaded only after it
     if (plan.kind == BackendPlan::Kind::Direct) {
