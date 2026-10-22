@@ -364,6 +364,19 @@ lemonade config set extra_models_dir="/home/you/.lmstudio/models"
 | A Hugging Face or ModelScope cache | `~/.cache/huggingface/hub` |
 | Your own folder of GGUFs | anywhere readable, absolute or relative |
 
+> Note: With the Linux `.deb`/`.rpm` packages, `lemond` runs as the `lemonade` system user under a systemd unit with `ProtectHome=yes`, which hides `/home` from the service. A folder under `/home` is then rejected as "not accessible by the Lemonade server (Permission denied)" even when its permissions allow the `lemonade` user. Either keep the models outside `/home` (for example `/srv/models`), or expose just that folder to the service with a drop-in, and make sure the `lemonade` user can read the folder:
+>
+> ```bash
+> sudo mkdir -p /etc/systemd/system/lemond.service.d
+> printf '[Service]\nProtectHome=tmpfs\nBindReadOnlyPaths=/home/you/.lmstudio/models\n' | sudo tee /etc/systemd/system/lemond.service.d/models.conf
+> sudo systemctl daemon-reload && sudo systemctl restart lemond
+> lemonade config set extra_models_dir="/home/you/.lmstudio/models"
+> ```
+>
+> The rejected value was not saved, so run `config set` again after the restart. `ProtectHome=tmpfs` keeps the rest of `/home` hidden.
+>
+> The drop-in exposes only that one folder. If you later point `extra_models_dir` at a path outside it, change `BindReadOnlyPaths` to match, then run `daemon-reload` and restart `lemond` again. `config set` alone is not enough, because systemd sets up the mount when the service starts.
+
 ### Model Naming Scheme
 
 A model's name comes from the directory layout around its files. A path uses the Hugging Face / ModelScope cache rules only when its GGUFs are inside a recognized cache layout such as `models--<org>--<repo>/snapshots/<commit>/...` or `modelscope--models--<org>--<repo>/snapshots/<commit>/...`. A folder merely named like a cache repo is not sufficient. All other paths use the non-HF/MS rules below.
@@ -573,7 +586,11 @@ The equivalent CLI registration is shown in [Pull an Omni Collection](#pull-an-o
 
 ### Image defaults
 
-For `sd-cpp` recipe models, you can specify default image generation parameters:
+For image models (including `sd-cpp` and `thenoise`), you can specify default generation parameters.
+The optional `soft_pixel_cap` limits the **inferred output area** of `/images/edits` when
+`size` is omitted; Lemonade preserves the input aspect ratio. If this field is
+missing or zero, the global 4,194,304-pixel (~4 MP) fallback applies.
+Explicitly requested output sizes are not subject to this soft cap:
 
 ```json
 {
@@ -585,7 +602,8 @@ For `sd-cpp` recipe models, you can specify default image generation parameters:
             "steps": 20,
             "cfg_scale": 7.0,
             "width": 512,
-            "height": 512
+            "height": 512,
+            "soft_pixel_cap": 262144
         }
     }
 }
