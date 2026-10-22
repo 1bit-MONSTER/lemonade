@@ -52,8 +52,8 @@ Each backend has a tier and a format; see [Backend Tiers and Formats](../api/lem
 | `moonshine` | cpu | core | python | windows | cpu (x86_64) |
 | `moonshine` | cpu | core | python | linux | cpu (arm64, x86_64) |
 | `moonshine` | cpu | core | python | macos | cpu (arm64) |
-| `onebit` | hrx | experimental | native | linux | amd_gpu (gfx1151) |
-| `onebit` | npu | experimental | native | linux | amd_npu (XDNA2) |
+| `onebit` | hrx | guest | native | linux | amd_gpu (gfx1151) |
+| `onebit` | npu | guest | native | linux | amd_npu (XDNA2) |
 | `onnxruntime` | cpu | experimental | native | windows | cpu (x86_64) |
 | `onnxruntime` | cpu | experimental | native | linux | cpu (arm64, x86_64) |
 | `onnxruntime` | cpu | experimental | native | macos | cpu (arm64) |

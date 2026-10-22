@@ -42,8 +42,8 @@ inline const BackendDescriptor descriptor = {
          "Experts file for --onebit-pm (default: the engine's built-in config/pm-experts.json)", "1bit Options"},
     },
     /*support*/ {
-        {"hrx", BackendTier::Experimental, BackendFormat::Native, {"linux"}, {{"amd_gpu", {"gfx1151"}}}, "Strix Halo iGPU through AMD's HRX"},
-        {"npu", BackendTier::Experimental, BackendFormat::Native, {"linux"}, {{"amd_npu", {"XDNA2"}}}, "XDNA2 NPU (1bit NPU model directories)"},
+        {"hrx", BackendTier::Guest, BackendFormat::Native, {"linux"}, {{"amd_gpu", {"gfx1151"}}}, "Strix Halo iGPU through AMD's HRX"},
+        {"npu", BackendTier::Guest, BackendFormat::Native, {"linux"}, {{"amd_npu", {"XDNA2"}}}, "XDNA2 NPU (1bit NPU model directories)"},
     },
     /*supported_modes*/ {"chat", "embeddings", "reranking"},  // `1bit serve --embedding / --reranking`
     /*required_checkpoints*/ {"main"},
