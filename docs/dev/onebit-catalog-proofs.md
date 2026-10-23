@@ -16,10 +16,10 @@ limitations under the License.
 -->
 # The onebit catalog, entry by entry
 
-`src/cpp/resources/server_models.json` carries 26 `onebit` entries: **22 on the HRX route** (the rows
-below, one per catalog entry) and 4 NPU model directories (a separate route, added in #20). This page
-records how each HRX entry was proven on Strix Halo, so a reader can tell an entry that runs from one
-that was only added.
+`src/cpp/resources/server_models.json` carries 27 `onebit` entries: **22 proven on the HRX route** (the rows
+below, one per catalog entry), **1 added and awaiting its proof** (flint-40b-a2.5b, see the row marked
+*pending*), and 4 NPU model directories (a separate route, added in #20). This page records how each HRX
+entry was proven on Strix Halo, so a reader can tell an entry that runs from one that was only added.
 
 ## What "proven" means here
 
@@ -65,8 +65,25 @@ re-measured rows).
 | Qwen3-Coder-30B-A3B-Instruct-1bit | 12.4 s | 200: The capital of France is Paris. | **84.6 tok/s** (min 83.6, max 85.2), TTFT 102 ms, 27/20 tok, failed 0/3 | 23 Oct, engine f37f51c |
 | Qwen3.8-27B-1bit | 12.3 s | 200: Paris is the capital of France. | **26.1 tok/s** (min 26.0, max 26.1), TTFT 807 ms, 67/20 tok, failed 0/3 | 23 Oct, engine f37f51c |
 | gpt-oss-20b-mxfp4-1bit | 5.7 s | 200: Paris is | **72.3 tok/s** (min 65.8, max 76.6), TTFT 238 ms, 88/20 tok, failed 0/3 | 22 Oct, engine 4b645cb |
+| flint-40b-a2.5b | *pending* | *pending* | *pending* | **added, not proven yet** — see the note below |
 
 ## Notes on individual rows
+
+- **flint-40b-a2.5b** is the newest entry and the one row above that is **not proven yet**.
+  `unsloth/flint-GGUF:flint-UD-Q4_K_XL.gguf` (25.05 GB, 39.8 B total / ~2.5 B active, 256 routed experts
+  top-6 plus a shared expert, 49 layers, hybrid 35 sliding-window / 14 full attention) is a new
+  architecture: the `flint` arch lands in our llama.cpp fork with #134 (upstream ggml-org/llama.cpp
+  #30928). Until an engine build carries that pin, `lemonade load flint-40b-a2.5b --onebit hrx` fails on
+  an unknown architecture, so the load/request/bench cells say *pending* rather than carrying numbers
+  from another build. The proof run itself is the standard protocol above (one `gpu-hold` claim, strict
+  placement, `chat-short` bench 3 runs), queued behind the leaderboard's lane.
+
+  **Sampling** the model recommends, and what the GGUF's own `general.sampling.*` metadata already
+  carries: **temp 1.0, top-p 0.95, top-k 20**. It is a reasoning model — it emits `<think> … </think>`
+  before any answer — so a request that caps output around 64 tokens shows reasoning only; give it an
+  **output budget of ~32K tokens** (the model's context is 262,144) when the answer matters. On the
+  host-side CPU check the same three prompts answered coherently at temp 0 greedy with a ceiling of
+  400-800 tokens.
 
 - **Qwen3.8-27B** carries its own MTP head (`blk.64.nextn.*`), so the onebit engine drafts with it by
   default: the numbers are the **MTP-default** configuration, not a bare decode.

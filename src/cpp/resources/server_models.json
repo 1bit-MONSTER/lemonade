@@ -3133,5 +3133,16 @@
             "tool-calling"
         ],
         "size": 12.1
+    },
+    "flint-40b-a2.5b": {
+        "checkpoint": "unsloth/flint-GGUF:flint-UD-Q4_K_XL.gguf",
+        "recipe": "onebit",
+        "labels": [
+            "chat",
+            "reasoning",
+            "coding",
+            "tool-calling"
+        ],
+        "size": 25.05
     }
 }
