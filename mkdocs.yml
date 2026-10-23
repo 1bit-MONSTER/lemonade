@@ -102,6 +102,7 @@ nav:
     - C++: dev/getting-started.md
     - Adding a Backend: dev/adding-a-backend.md
     - Backends Reference: dev/backends-reference.md
+    - The onebit catalog, entry by entry: dev/onebit-catalog-proofs.md
     - Desktop App: dev/app.md
     - Web UI: dev/web-ui.md
     - Lemonade Omni Models: dev/lemonade-omni.md
