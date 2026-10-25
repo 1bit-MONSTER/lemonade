@@ -209,6 +209,7 @@ Requires `LEMONADE_ADMIN_API_KEY` when it is set, otherwise `LEMONADE_API_KEY` w
 | `moonshine` | No | `moonshine` settings; send only the keys to change. | <sub>![Status](https://img.shields.io/badge/available-green)</sub> |
 | `no_fetch_executables` | No | Defaults to `false`. | <sub>![Status](https://img.shields.io/badge/available-green)</sub> |
 | `offline` | No | Defaults to `false`. | <sub>![Status](https://img.shields.io/badge/available-green)</sub> |
+| `onebit` | No | `onebit` settings; send only the keys to change. | <sub>![Status](https://img.shields.io/badge/available-green)</sub> |
 | `onnxruntime` | No | `onnxruntime` settings; send only the keys to change. | <sub>![Status](https://img.shields.io/badge/available-green)</sub> |
 | `openmoss` | No | `openmoss` settings; send only the keys to change. | <sub>![Status](https://img.shields.io/badge/available-green)</sub> |
 | `port` | No | Defaults to `13305`. | <sub>![Status](https://img.shields.io/badge/available-green)</sub> |
