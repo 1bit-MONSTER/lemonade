@@ -36,6 +36,26 @@ namespace backends {
 
 static const std::string DRIVER_INSTALL_URL = "https://lemonade-server.ai/driver_install.html";
 
+// FLM's NPU attention layout allocates ctx + 128 and walks at most 16384 chunks (MAX_L_LIMIT), so its 16384
+// tier never loads ("max_len 16512 ... past the 1024 its 10-bit BD dimension can walk"). 8192 is the largest
+// tier it can build: 10240, 12288, 14336, 16256, 16384, 32768 and 57139 were all rejected on device while
+// 8192 answered. Handing a model's declared window through unclamped (57139 for qwen3.8-mtp:27b) made every
+// FLM model whose config.json is bigger fail to load and answer HTTP 500 (issue #587).
+constexpr int64_t FLM_NPU_MAX_CTX = 8192;
+
+namespace {
+
+int clamp_ctx_for_flm(int ctx_size) {
+    if (ctx_size <= 0 || ctx_size <= FLM_NPU_MAX_CTX) {
+        return ctx_size;
+    }
+    LOG(WARNING, "FastFlowLM") << "ctx_size " << ctx_size << " is above what the NPU attention layout can "
+                               << "allocate; using " << FLM_NPU_MAX_CTX << " instead" << std::endl;
+    return static_cast<int>(FLM_NPU_MAX_CTX);
+}
+
+}  // namespace
+
 
 InstallParams FastFlowLMServer::get_install_params(const std::string& backend, const std::string& version) {
     InstallParams params;
@@ -145,7 +165,7 @@ void FastFlowLMServer::load(const std::string& model_name,
                             bool do_not_upgrade) {
     LOG(INFO, "FastFlowLM") << "Loading model: " << model_name << std::endl;
 
-    int ctx_size = options.get_option("ctx_size");
+    int ctx_size = clamp_ctx_for_flm(options.get_option("ctx_size"));
     std::string flm_args = options.get_option("flm_args");
     FLMArgResolution flm_arg_resolution = resolve_flm_args(flm_args, ctx_size);
 
@@ -410,7 +430,8 @@ namespace {
 class FlmOps : public BackendOps {
 public:
     void populate_metadata(ModelInfo& info, const BackendOpsContext&) const override {
-        info.max_context_window = read_flm_max_context_window(info);
+        // advertise what the backend can serve, not the window its config.json declares
+        info.max_context_window = std::min<int64_t>(read_flm_max_context_window(info), FLM_NPU_MAX_CTX);
     }
 
     std::string resolve_checkpoint_path(const ModelInfo&,
