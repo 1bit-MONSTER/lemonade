@@ -1,7 +1,8 @@
 #pragma once
 #include "lemon/backends/backend_registry.h"
 #include "lemon/backends/llamacpp/llamacpp_server.h"
-#include "lemon/model_manager.h"
+#include "lemon/model_manager_types.h"
+#include "lemon/recipe_options.h"
 
 #include <memory>
 #include <set>
