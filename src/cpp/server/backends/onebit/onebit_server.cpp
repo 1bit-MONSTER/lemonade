@@ -234,6 +234,11 @@ void OnebitServer::load(const std::string& model_name,
     // the NPU, and a build without HRX serves on the CPU.
     std::string device = options.has_option("onebit_backend") ? options.get_option("onebit_backend").get<std::string>() : "";
     if (device.empty()) device = "auto";
+    // The engine runs on the device the option names, so that is the device this model is
+    // reported on: health's `device` field and the router's NPU checks read get_device_type(),
+    // which otherwise keeps the descriptor's default (hrx => gpu) for an NPU model.
+    // shortcut: `auto` still reports gpu - only `1bit serve` knows what it picked there.
+    device_type_ = device == "npu" ? DEVICE_NPU : DEVICE_GPU;
     const int backend_port = choose_port();
     const int ctx_size = options.get_option("ctx_size");
 
