@@ -1268,8 +1268,8 @@ for line in sys.stdin:
         docs/laya-first.md §8) and this policy turns Laya's class into a model choice.
         Laya's calibrated confidence is the score, so `min_score` is a real gate: the
         `code` rule below asks for 0.5 and the daemon answers 0.91, while the prose
-        rule is deliberately at 0.0 because Laya's prose confidence is ~0.44-0.77 and
-        the band's default floor of 0.5 would drop it.
+        rule is deliberately low (0.01) because Laya's prose confidence can sit below the
+        band's default floor of 0.5 - but not 0.0, which would match every class.
 
         Needs a server started with a stand-in daemon, because no Laya checkpoint is
         installed on a test machine:
@@ -1318,8 +1318,11 @@ for line in sys.stdin:
                         "route_to": CAPABLE_MODEL,
                     },
                     {
+                        # 0.01, not 0.0: the classifier reports only the class Laya chose, so
+                        # every other label scores exactly 0.0 and a 0.0 floor would let this rule
+                        # match anything (engine: measured, a short prompt routed to the code model).
                         "id": "prose-stays-small",
-                        "match": {"classifier": "laya", "label": "prose", "min_score": 0.0},
+                        "match": {"classifier": "laya", "label": "prose", "min_score": 0.01},
                         "route_to": DEFAULT_MODEL,
                     },
                 ],
