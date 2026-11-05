@@ -4,6 +4,7 @@
 #include <chrono>
 #include <csignal>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <limits>
 #include <string>
@@ -128,6 +129,37 @@ int main() {
     check("is_running() rejects non-existent PID",
           !ProcessManager::is_running(
               make_handle(std::numeric_limits<int>::max())));
+
+    {
+        ::unsetenv("LEMONADE_GPU_CLEANUP_WAIT_MS");
+        const pid_t child = spawn_running_child();
+        if (child > 0) {
+            const ProcessHandle handle = make_handle(child);
+            const auto start = std::chrono::steady_clock::now();
+            ProcessManager::stop_process(handle);
+            const auto elapsed = std::chrono::steady_clock::now() - start;
+            check("stop_process() waits the shipped 2 s GPU-cleanup delay by default",
+                  elapsed >= std::chrono::milliseconds(1900));
+            check("stop_process() leaves no running child behind",
+                  !ProcessManager::is_running(handle));
+        }
+    }
+
+    {
+        ::setenv("LEMONADE_GPU_CLEANUP_WAIT_MS", "0", 1);
+        const pid_t child = spawn_running_child();
+        if (child > 0) {
+            const ProcessHandle handle = make_handle(child);
+            const auto start = std::chrono::steady_clock::now();
+            ProcessManager::stop_process(handle);
+            const auto elapsed = std::chrono::steady_clock::now() - start;
+            ::unsetenv("LEMONADE_GPU_CLEANUP_WAIT_MS");
+            check("LEMONADE_GPU_CLEANUP_WAIT_MS=0 removes the GPU-cleanup delay",
+                  elapsed < std::chrono::milliseconds(1000));
+            check("stop_process() with no wait still leaves no running child",
+                  !ProcessManager::is_running(handle));
+        }
+    }
 
     if (failures == 0) {
         std::printf("\nAll process_manager tests passed\n");
