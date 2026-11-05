@@ -1,5 +1,6 @@
 // onebit_server.cpp: the 1bit engine (`1bit serve`) as a Lemonade backend.
 #include "lemon/backends/onebit/onebit_server.h"
+#include "lemon/backends/onebit/onebit_env.h"
 
 #include "lemon/backends/backend_ops.h"
 #include "lemon/backends/onebit/onebit.h"
@@ -312,10 +313,7 @@ void OnebitServer::load(const std::string& model_name,
 
 namespace onebit {
 
-std::string resolve_binary() {
-    if (const char* env = std::getenv("LEMONADE_ONEBIT_BIN"); env && *env) return env;
-    return "1bit";
-}
+std::string resolve_binary() { return engine_binary(); }
 
 const std::set<std::string>& allowed_arg_flags() {
     static const std::set<std::string> flags = {

@@ -1105,6 +1105,80 @@ ConditionPtr make_not_condition(ConditionPtr child) {
     return std::make_shared<NotCondition>(std::move(child));
 }
 
+const std::vector<std::string>& laya_request_classes() {
+    static const std::vector<std::string> classes = {"code", "prose", "short", "long_doc"};
+    return classes;
+}
+
+// A `laya` classifier asks the engine's resident router daemon instead of running a
+// model of its own (docs/laya-first.md): the daemon holds Laya's scorer loaded, so a
+// decision costs 0.4-0.85 s of CPU and no device, and the labels are the engine's own
+// request classes (code, prose, short, long_doc). The score carries Laya's calibrated
+// confidence, so a policy can gate on it with `min_score` exactly as it would on any
+// other classifier's probability.
+class LayaClassifier final : public Classifier {
+public:
+    LayaClassifier(std::string id, std::string type, OnError on_error,
+                   std::vector<std::string> labels,
+                   std::optional<std::string> default_label)
+        : Classifier(std::move(id), std::move(type), on_error, std::string{},
+                     std::move(labels), std::move(default_label)) {
+        if (this->labels().empty()) {
+            // No labels means the caller wants every class the engine can answer,
+            // which is the common case: `{"id": "laya-class", "type": "laya"}`.
+            labels_ = laya_request_classes();
+        }
+        for (const auto& label : this->labels()) {
+            const auto& classes = laya_request_classes();
+            if (std::find(classes.begin(), classes.end(), label) == classes.end()) {
+                throw std::invalid_argument(
+                    "laya classifier '" + this->id() + "' label '" + label +
+                    "' is not a Laya request class (code, prose, short, long_doc)");
+            }
+        }
+    }
+
+    Score evaluate(const ClassifierContext& ctx) const override {
+        if (!ctx.services.laya) {
+            return failed_score();  // no daemon wired: the condition applies on_error
+        }
+        LayaDecision decision;
+        try {
+            decision = ctx.services.laya(ctx.request.input);
+        } catch (const RouterResidencyConflictException&) {
+            // A hardware coexistence conflict must reach the HTTP layer as a
+            // deterministic 409, as it does for the llm router.
+            throw;
+        } catch (...) {
+            return failed_score();
+        }
+        if (!decision.ok) {
+            return failed_score();
+        }
+        Score score;
+        score.ok = true;
+        const std::string* label = match_label(decision.label);
+        if (label == nullptr) {
+            // A class this policy did not declare: fail open to the default, never
+            // to an arbitrary label (same rule as the llm router's unknown choice).
+            return score;
+        }
+        score.labels[*label] = decision.confidence;
+        score.rationale = "laya " + decision.label + " (confidence " +
+                          std::to_string(decision.confidence).substr(0, 4) + "), daemon device " +
+                          decision.device;
+        return score;
+    }
+
+private:
+    const std::string* match_label(const std::string& chosen) const {
+        for (const auto& label : labels()) {
+            if (chosen == label) return &label;
+        }
+        return nullptr;
+    }
+};
+
 ConditionPtr make_classifier_band_condition(ClassifierPtr classifier,
                                             std::optional<std::string> label,
                                             std::optional<double> min_score,
@@ -1167,6 +1241,26 @@ ClassifierPtr make_classifier(const json& config, bool expose_request_features) 
             id, type, config.value("model", ""), config.value("prompt", ""),
             on_error, std::move(labels), std::move(default_label),
             expose_request_features);
+    }
+
+    if (type == "laya") {
+        // It runs no model of its own (the engine's daemon does the classifying), so
+        // `model`/`prompt` are authoring errors, not keys to ignore: a policy that
+        // names one is asking this classifier to do something it cannot.
+        if (config.contains("model") || config.contains("prompt")) {
+            throw std::invalid_argument(
+                "laya classifier '" + id +
+                "' takes no model and no prompt; it asks the engine's Laya router daemon");
+        }
+        std::vector<std::string> labels = parse_labels(config, id);
+        if (labels.empty()) {
+            // The default label set is every class the engine answers, so a policy
+            // may write {"id": "laya-class", "type": "laya"} and use all four.
+            labels = laya_request_classes();
+        }
+        std::optional<std::string> default_label = parse_default_label(config, labels, id);
+        return std::make_shared<LayaClassifier>(id, type, on_error, std::move(labels),
+                                                std::move(default_label));
     }
 
     if (type == "pii_detection" || type == "prompt_safety" ||
