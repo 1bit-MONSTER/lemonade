@@ -155,6 +155,19 @@ inline const char* on_error_to_string(OnError e) {
 // Backend injection seam
 // ---------------------------------------------------------------------------
 
+// One answer from the resident Laya router daemon: the request class it picked,
+// its calibrated confidence, and the device the daemon's own route policy chose
+// (informational — this Lemonade policy does the routing here). `ok` is false
+// when the daemon could not answer; the classifier then reports a failed score so
+// the owning condition applies its on_error.
+struct LayaDecision {
+    bool ok = false;
+    std::string label;       // code | prose | short | long_doc
+    double confidence = 0.0; // 0..1
+    std::string device;      // what the daemon's policy picked, for the trace
+    double decision_ms = 0.0;
+};
+
 // The ONLY way the pure engine touches live backends. Real implementations bind
 // these to the Router (embeddings / classifier-model invocation / chat); tests
 // bind them to fakes (fixed vectors / fixed scores / fixed text). Keeping them
@@ -176,6 +189,13 @@ struct ClassifierServices {
     std::function<std::string(const std::string& model,
                               const std::string& prompt,
                               const std::string& input)> chat;
+
+    // Ask the engine's resident router daemon (`1bit route --serve`) which
+    // request class `text` is. Powers the `laya` classifier. Maps to the
+    // onebit backend's LayaClient, which keeps the daemon (and its 2.7 s
+    // scorer load) alive across requests; an empty callable means the daemon
+    // is not installed, and a `laya` classifier then fails to its on_error.
+    std::function<LayaDecision(const std::string& text)> laya;
 };
 
 // Per-candidate cost metadata looked up after route_to is resolved. All fields
@@ -427,6 +447,12 @@ ConditionPtr compile_match_expr(const MatchExpr& expr, const LeafFactory& leaf_f
 // routing_policy.cpp for which classifiers the parser passes true for. The
 // default preserves prior always-expose behavior for direct callers (tests,
 // standalone tooling).
+// The request classes the engine's Laya router knows (laya/route.h request_classes).
+// A `laya` classifier declares a subset of these as its labels; the engine names
+// them, so a typo in a policy is a parse error rather than a classifier that never
+// matches.
+const std::vector<std::string>& laya_request_classes();
+
 ClassifierPtr make_classifier(const json& config, bool expose_request_features = true);
 std::map<std::string, ClassifierPtr> make_classifiers(const json& classifiers_json,
                                                        bool expose_request_features = true);

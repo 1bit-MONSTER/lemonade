@@ -329,6 +329,157 @@ static void test_concurrent_route_is_consistent() {
     check("concurrent route() calls stay consistent", mismatches.load() == 0);
 }
 
+// ── the `laya` classifier (docs/laya-first.md §8 step 2) ─────────────────────
+// It runs no model of its own: it asks the engine's resident router daemon what
+// request class the prompt is, and Laya's confidence becomes the score, so a
+// policy gates on it with min_score like any other classifier's probability.
+
+// One policy with a `laya` classifier, both directions wired the same way a
+// deployed policy would be.
+static RoutePolicy make_laya_policy(json classifier_extra = json::object()) {
+    json classifier = json{{"id", "laya-class"}, {"type", "laya"},
+                           {"labels", {"code", "prose"}},
+                           {"default_label", "prose"}};
+    for (auto it = classifier_extra.begin(); it != classifier_extra.end(); ++it) {
+        classifier[it.key()] = it.value();
+    }
+    RoutePolicy policy;
+    policy.candidates = {"code-llm", "everyday-llm"};
+    policy.default_model = "everyday-llm";
+    policy.classifiers = lemon::make_classifiers(json::array({classifier}));
+    policy.rules = {
+        make_rule("code-goes-big", classifier_leaf("laya-class", "code", 0.5), "code-llm"),
+    };
+    return policy;
+}
+
+static void test_laya_classifier_routes_on_its_class() {
+    lemon::ClassifierServices services;
+    services.laya = [](const std::string& text) {
+        lemon::LayaDecision d;
+        d.ok = true;
+        d.label = text.find("linked list") != std::string::npos ? "code" : "prose";
+        d.confidence = 0.91;
+        d.device = "hrx";
+        d.decision_ms = 412.7;
+        return d;
+    };
+    RoutingPolicyEngine engine(make_laya_policy(), std::move(services));
+
+    RouteContext code;
+    code.input = "Write a Python function that reverses a linked list.";
+    Decision d = engine.route(code, true);
+    check("laya: the class the daemon named routes to its rule",
+          d.route_to == "code-llm" && d.matched_rule == "code-goes-big" && !d.default_used);
+
+    RouteContext prose;
+    prose.input = "Summarise this article in two sentences.";
+    Decision p = engine.route(prose, false);
+    check("laya: a non-matching class fails open to default_model",
+          p.route_to == "everyday-llm" && p.matched_rule.empty() && p.default_used);
+}
+
+// Laya's confidence is the score, so min_score is a real gate: a class named with
+// low confidence must not match a rule that demands 0.5.
+static void test_laya_confidence_is_the_score() {
+    lemon::ClassifierServices services;
+    services.laya = [](const std::string&) {
+        lemon::LayaDecision d;
+        d.ok = true;
+        d.label = "code";
+        d.confidence = 0.2;  // the class is right, Laya is unsure
+        return d;
+    };
+    RoutingPolicyEngine engine(make_laya_policy(), std::move(services));
+
+    RouteContext ctx;
+    ctx.input = "x";
+    Decision d = engine.route(ctx, false);
+    check("laya: a class below min_score does not match the rule",
+          d.route_to == "everyday-llm" && d.default_used);
+}
+
+// A class this policy did not declare (long_doc or short) fails open rather than
+// matching an arbitrary label — the same rule the llm router applies to an
+// unknown choice.
+static void test_laya_undeclared_class_fails_open() {
+    lemon::ClassifierServices services;
+    services.laya = [](const std::string&) {
+        lemon::LayaDecision d;
+        d.ok = true;
+        d.label = "long_doc";
+        d.confidence = 1.0;
+        return d;
+    };
+    RoutingPolicyEngine engine(make_laya_policy(), std::move(services));
+
+    RouteContext ctx;
+    ctx.input = "a 2 KB pasted log";
+    Decision d = engine.route(ctx, false);
+    check("laya: an undeclared class falls back to default_model",
+          d.route_to == "everyday-llm" && d.default_used);
+}
+
+// A daemon that cannot answer is a failed classifier, not a wrong route: the
+// owning condition applies on_error (match_false by default => default_model;
+// match_true => the rule).
+static void test_laya_daemon_failure_applies_on_error() {
+    lemon::ClassifierServices down;
+    down.laya = [](const std::string&) {
+        lemon::LayaDecision d;  // ok = false
+        return d;
+    };
+    RoutingPolicyEngine fails_open(make_laya_policy(), std::move(down));
+    RouteContext ctx;
+    ctx.input = "Write a Python function that reverses a linked list.";
+    Decision d = fails_open.route(ctx, false);
+    check("laya: a dead daemon fails open by default",
+          d.route_to == "everyday-llm" && d.default_used);
+
+    lemon::ClassifierServices closed;
+    closed.laya = [](const std::string&) -> lemon::LayaDecision {
+        throw std::runtime_error("daemon gone");
+    };
+    RoutingPolicyEngine closed_engine(make_laya_policy(json{{"on_error", "match_true"}}),
+                                      std::move(closed));
+    Decision c = closed_engine.route(ctx, false);
+    check("laya: on_error match_true routes a thrown daemon to its rule",
+          c.route_to == "code-llm" && c.matched_rule == "code-goes-big");
+
+    // No daemon wired at all (the engine is not installed): same failure path.
+    RoutingPolicyEngine unwired(make_laya_policy(), lemon::ClassifierServices{});
+    Decision u = unwired.route(ctx, false);
+    check("laya: an unwired service fails open rather than throwing",
+          u.route_to == "everyday-llm" && u.default_used);
+}
+
+// Authoring errors are parse errors, not silent non-matches: a label that is not a
+// Laya class is rejected, and omitting labels declares the engine's four.
+static void test_laya_labels_are_validated() {
+    bool rejected = false;
+    try {
+        lemon::make_classifiers(json::array({json{{"id", "typo"}, {"type", "laya"},
+                                                  {"labels", {"coding"}}}}));
+    } catch (const std::invalid_argument& e) {
+        rejected = std::string(e.what()).find("not a Laya request class") != std::string::npos;
+    }
+    check("laya: a label that is not a request class is a parse error", rejected);
+
+    bool model_rejected = false;
+    try {
+        lemon::make_classifiers(json::array({json{{"id", "m"}, {"type", "laya"}, {"model", "x"}}}));
+    } catch (const std::invalid_argument& e) {
+        model_rejected = std::string(e.what()).find("takes no model and no prompt") != std::string::npos;
+    }
+    check("laya: a model or prompt on it is a parse error", model_rejected);
+
+    const auto all = lemon::make_classifiers(
+        json::array({json{{"id", "any"}, {"type", "laya"}}}));
+    const auto& labels = all.at("any")->labels();
+    check("laya: omitting labels declares every request class",
+          labels == lemon::laya_request_classes() && labels.size() == 4);
+}
+
 int main() {
     test_rule_match_path();
     test_default_path();
@@ -340,6 +491,11 @@ int main() {
     test_deterministic_min_chars_route();
     test_deterministic_metadata_route();
     test_concurrent_route_is_consistent();
+    test_laya_classifier_routes_on_its_class();
+    test_laya_confidence_is_the_score();
+    test_laya_undeclared_class_fails_open();
+    test_laya_daemon_failure_applies_on_error();
+    test_laya_labels_are_validated();
 
     std::printf("\n%s\n", g_failures == 0 ? "ALL ENGINE TESTS PASSED"
                                           : "ENGINE TESTS FAILED");

@@ -100,6 +100,18 @@ window, estimate ~4 bytes per token.
 | `semantic_similarity` | Cosine similarity of the input against labelled `reference_phrases`, via an embedding model. |
 | `classifier` | A `{label: score}` classifier — an encoder model via the `onnxruntime` backend (`/v1/classify`), or any model as an LLM-as-classifier via chat. |
 | `llm` | An LLM picks exactly one of the declared `labels` for the request (with a rationale); the chosen label scores `1.0`, the rest `0`. You supply the `model` and a `prompt` describing when to choose each label. |
+| `laya` | The engine's own router daemon picks one of Laya's request classes (`code`, `prose`, `short`, `long_doc`); the class's calibrated confidence is the score, so `min_score` gates on how sure Laya is. No `model` and no `prompt`: it runs no model of its own. |
+
+A `laya` classifier asks the resident `1bit route --serve` daemon (the engine's Laya scorer, kept
+loaded so a decision costs 0.4–0.85 s of CPU and no GPU) instead of loading a model into the
+router's residency set. `labels` are optional and default to all four classes; a typo in a label is
+a parse error, because the engine names the classes. The engine resolves the daemon from
+`LEMONADE_ONEBIT_BIN` and the checkpoint from the `LEMONADE_LAYA_MODEL` variable
+(`docs/lemonade.md`); with neither, the classifier is unwired and a condition on it applies its
+`on_error` — a missing daemon is a failed classifier, never a wrong route. A class the policy did
+not declare falls back to `default_label`, exactly as an unknown `llm` choice does. Its
+`rationale` in the trace names both Laya's class and the device the engine's own policy picked,
+which is the only place the two policies' disagreement is visible.
 
 A classifier condition is a band test: `{ "classifier": "<id>", "label": "<name>",
 "min_score": 0.5, "max_score": 1.0 }` (omitting both bounds defaults to

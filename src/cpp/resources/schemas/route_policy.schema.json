@@ -72,11 +72,12 @@
       "properties": {
         "id": { "type": "string" },
         "type": {
-          "description": "v1: semantic_similarity, classifier, llm. Reserved vLLM-SR presets ship post-v1 as thin presets over `classifier`.",
+          "description": "v1: semantic_similarity, classifier, llm, laya. Reserved vLLM-SR presets ship post-v1 as thin presets over `classifier`.",
           "enum": [
             "semantic_similarity",
             "classifier",
             "llm",
+            "laya",
             "pii_detection",
             "prompt_safety",
             "language_detection",
@@ -120,7 +121,9 @@
           "then": { "required": ["model"] } },
         { "if":   { "required": ["type"], "properties": { "type": { "const": "llm" } } },
           "then": { "required": ["model", "prompt", "labels"],
-                    "properties": { "labels": { "minItems": 1 } } } }
+                    "properties": { "labels": { "minItems": 1 } } } },
+        { "if":   { "required": ["type"], "properties": { "type": { "const": "laya" } } },
+          "then": { "not": { "anyOf": [ { "required": ["model"] }, { "required": ["prompt"] } ] } } }
       ]
     },
     "rule": {

@@ -90,6 +90,33 @@ class RoutingFixtureSchemaTest(unittest.TestCase):
         # Missing reference_phrases for semantic_similarity -> invalid.
         self.assertTrue(list(validator.iter_errors(base)))
 
+    def test_laya_classifier_takes_no_model(self):
+        """`type: "laya"` runs no model of its own: it asks the engine's router
+        daemon, so a `model` on it is a schema error rather than a silently
+        ignored key (the daemon names the classes: code, prose, short, long_doc)."""
+        validator = jsonschema.Draft202012Validator(self.route_policy_schema)
+
+        def policy(classifier):
+            return {
+                "version": "1",
+                "recipe": "collection.router",
+                "routing": {
+                    "candidates": ["a"],
+                    "default_model": "a",
+                    "classifiers": [classifier],
+                    "rules": [{"id": "r", "match": {"classifier": "x"}, "route_to": "a"}],
+                },
+            }
+
+        self.assertFalse(list(validator.iter_errors(policy({"id": "x", "type": "laya"}))))
+        self.assertFalse(
+            list(validator.iter_errors(policy({"id": "x", "type": "laya", "labels": ["code"]})))
+        )
+        self.assertTrue(list(validator.iter_errors(policy({"id": "x", "type": "laya", "model": "m"}))))
+        self.assertTrue(
+            list(validator.iter_errors(policy({"id": "x", "type": "laya", "prompt": "say code"})))
+        )
+
     def test_locked_structural_invariants(self):
         """Cross-field invariants the JSON Schema cannot express: default_model
         and every rule.route_to must be a candidate; classifier condition refs
