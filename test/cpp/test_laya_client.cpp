@@ -72,9 +72,13 @@ while IFS= read -r line; do
 done
 )SH";
 
-// A daemon that starts but never loads the scorer (no ready line).
+// A daemon that starts but never loads the scorer (no ready line). `exec` matters: without it the script
+// stays alive as bash and the client's SIGTERM kills bash, leaving `sleep` orphaned — which then holds the
+// test's stdout open, so a runner that reads the test's output to EOF (ctest) waits for it: the whole
+// LayaClientTest hung until its timeout with every case already PASSED. With exec, the pid the client kills
+// is the sleep itself. 60 s is enough for the 1.5 s start timeout and short even if one ever leaks.
 const char* kSilentDaemon = R"SH(#!/usr/bin/env bash
-sleep 400
+exec sleep 60
 )SH";
 
 std::string write_script(const fs::path& dir, const char* name, const char* body) {

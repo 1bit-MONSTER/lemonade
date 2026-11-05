@@ -213,8 +213,18 @@ private:
             }
             if (pid_ > 0) {
                 kill(pid_, SIGKILL);
-                waitpid(pid_, nullptr, 0);
-                pid_ = -1;
+                // Bounded even here: this runs on lemond's shutdown path, and a daemon that survived
+                // SIGKILL (uninterruptible I/O, or a child of its own still holding the pipes) must not
+                // hang the server's exit. 2 s is already generous for a signal that cannot be caught.
+                for (int i = 0; i < 20 && pid_ > 0; ++i) {
+                    int status = 0;
+                    if (waitpid(pid_, &status, WNOHANG) == pid_) pid_ = -1;
+                    else usleep(100 * 1000);
+                }
+                if (pid_ > 0) {
+                    LOG(WARNING) << "laya: the decision daemon did not exit after SIGKILL; leaving it" << std::endl;
+                    pid_ = -1;
+                }
             }
         }
         if (read_fd_ >= 0) {
