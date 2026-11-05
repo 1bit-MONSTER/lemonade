@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <cstring>
+#include <cstdlib>
 #include <thread>
 #include <chrono>
 #include <algorithm>
@@ -304,6 +305,23 @@ ProcessHandle LinuxProcessPlatform::spawn(
     return handle;
 }
 
+// The wait after a child exits exists for Vulkan/ROCm contexts that can outlive the process (upstream #514). On the
+// onebit/HRX one-hop path the child is reaped before the wait begins: 0 ms measured clean over 20 evict+load cycles
+// (no failed load, no dead child, no router retry), while exit-and-respawn itself costs 0.12 s. Shipped default stays
+// at 2 s; a deploy whose backends are all HRX can lower it.
+static std::chrono::milliseconds gpu_cleanup_wait() {
+    constexpr int kDefaultMs = 2000;
+    const char* raw = std::getenv("LEMONADE_GPU_CLEANUP_WAIT_MS");
+    if (!raw || raw[0] == '\0') {
+        return std::chrono::milliseconds(kDefaultMs);
+    }
+    try {
+        return std::chrono::milliseconds(std::max(0, std::stoi(raw)));
+    } catch (...) {
+        return std::chrono::milliseconds(kDefaultMs);
+    }
+}
+
 void LinuxProcessPlatform::terminate(ProcessHandle handle) {
     if (handle.pid <= 0) {
         return;
@@ -318,7 +336,7 @@ void LinuxProcessPlatform::terminate(ProcessHandle handle) {
             LOG(INFO, "ProcessManager") << "Process already exited; reaped PID "
                                         << handle.pid << std::endl;
             LOG(INFO, "ProcessManager") << "Process terminated, waiting for GPU driver cleanup..." << std::endl;
-            std::this_thread::sleep_for(std::chrono::seconds(2));
+            std::this_thread::sleep_for(gpu_cleanup_wait());
             return;
         }
     } else if (errno == ECHILD) {
@@ -360,7 +378,7 @@ void LinuxProcessPlatform::terminate(ProcessHandle handle) {
     }
 
     LOG(INFO, "ProcessManager") << "Process terminated, waiting for GPU driver cleanup..." << std::endl;
-    std::this_thread::sleep_for(std::chrono::seconds(2));
+    std::this_thread::sleep_for(gpu_cleanup_wait());
 }
 
 bool LinuxProcessPlatform::is_running(ProcessHandle handle) {
