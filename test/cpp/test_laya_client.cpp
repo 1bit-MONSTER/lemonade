@@ -29,6 +29,7 @@
 
 #include "lemon/backends/onebit/laya_client.h"
 
+#include <fcntl.h>
 #include <unistd.h>
 
 #include <chrono>
@@ -36,6 +37,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 
 namespace fs = std::filesystem;
@@ -92,6 +94,12 @@ int main() {
 
     const std::string fake = write_script(scratch, "fake-1bit", kFakeDaemon);
     ::setenv("LEMONADE_ONEBIT_BIN", fake.c_str(), 1);
+    // A descriptor this process holds across the fork (the way lemond holds its listening sockets): the
+    // daemon must not inherit it. 42 is chosen so the number cannot collide with the shell's own fds.
+    const fs::path leak_path = scratch / "leak";
+    std::ofstream(leak_path) << "held open across the fork\n";
+    const int leak_fd = ::dup2(::open(leak_path.c_str(), O_RDONLY), 42);
+    ::setenv("LAYA_TEST_FDS", (scratch / "fds.txt").c_str(), 1);
     ::unsetenv("LEMONADE_LAYA_MODEL");
     ::unsetenv("LEMONADE_LAYA_DEVICES");
 
@@ -101,6 +109,13 @@ int main() {
     check("the decision carries Laya's confidence", answer.ok && answer.confidence > 0.9 && answer.confidence < 0.92);
     check("the decision carries the daemon's device and cost",
           answer.device == "hrx" && answer.decision_ms > 400.0);
+    std::string daemon_fds;
+    if (fs::exists(scratch / "fds.txt")) {
+        std::ifstream in(scratch / "fds.txt");
+        daemon_fds.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }
+    check("the daemon did not inherit this process's descriptors",
+          leak_fd == 42 && daemon_fds.find("42") == std::string::npos);
     check("the daemon wrote its argv", fs::exists(argv_log));
     if (fs::exists(argv_log)) {
         std::ifstream in(argv_log);

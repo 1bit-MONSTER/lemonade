@@ -137,6 +137,18 @@ private:
         }
 
         const std::string binary = engine_binary();
+        // Everything the child needs is built BEFORE the fork: after fork() in a threaded process only
+        // async-signal-safe calls are allowed, and that excludes allocation. lemond is threaded (its
+        // thread pool is live while a request routes), so allocating in the child would deadlock on a
+        // malloc lock another thread held at fork time - and that deadlock looks exactly like "the
+        // daemon never started", in the routing path of a request.
+        std::vector<char*> raw;
+        raw.reserve(argv.size() + 2);
+        raw.push_back(const_cast<char*>(binary.c_str()));
+        for (const auto& arg : argv) raw.push_back(const_cast<char*>(arg.c_str()));
+        raw.push_back(nullptr);
+        char* const* argv_raw = raw.data();
+
         const pid_t pid = fork();
         if (pid < 0) return fail(now, "fork");
         if (pid == 0) {
@@ -146,11 +158,10 @@ private:
             close(to_child[1]);
             close(from_child[0]);
             close(from_child[1]);
-            std::vector<char*> raw;
-            raw.push_back(const_cast<char*>(binary.c_str()));
-            for (const auto& arg : argv) raw.push_back(const_cast<char*>(arg.c_str()));
-            raw.push_back(nullptr);
-            execvp(binary.c_str(), raw.data());
+            // Do not hand the daemon lemond's descriptors: they would keep its listening sockets open
+            // (a restarted lemond then finds the port taken) and outlive it. Only 0/1/2 are kept.
+            for (int fd = 3; fd < 256; ++fd) close(fd);
+            execvp(binary.c_str(), argv_raw);
             _exit(127);  // exec failed: the parent sees EOF and reports a failed classifier
         }
         close(to_child[0]);
