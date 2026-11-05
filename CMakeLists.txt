@@ -2846,6 +2846,25 @@ if(BUILD_TESTING AND EXISTS "${_ROUTING_ENGINE_TEST_SRC}")
     add_cpp_ci_test(RoutingPolicyEngineTest CI ON COMMAND test_routing_policy_engine)
 endif()
 
+# The Laya decision daemon client (`1bit route --serve`, docs/laya-first.md §8 step 2): a fake
+# daemon stands in for the engine, so no model, checkpoint or device is needed. Failures are the
+# point: a daemon that dies, babbles, never reports ready, or does not exist must all be a failed
+# decision the classifier turns into on_error — never a wrong route and never a hang.
+set(_LAYA_CLIENT_TEST_SRC "${CMAKE_CURRENT_SOURCE_DIR}/test/cpp/test_laya_client.cpp")
+if(BUILD_TESTING AND EXISTS "${_LAYA_CLIENT_TEST_SRC}")
+    add_executable(test_laya_client
+        test/cpp/test_laya_client.cpp
+        src/cpp/server/backends/onebit/laya_client.cpp
+    )
+    target_include_directories(test_laya_client PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/cpp/include
+        ${CMAKE_CURRENT_BINARY_DIR}/include
+    )
+    target_link_libraries(test_laya_client PRIVATE nlohmann_json::nlohmann_json)
+    include(CTest)
+    add_cpp_ci_test(LayaClientTest CI ON COMMAND test_laya_client)
+endif()
+
 # Routing policy parser (issue #2383): collection.router JSON -> RoutePolicy,
 # schema/parser key parity, component resolution, and validation errors.
 set(_ROUTING_PARSER_TEST_SRC

@@ -1,5 +1,6 @@
 #include "lemon/routing_classifier_services.h"
 
+#include "lemon/backends/onebit/laya_client.h"
 #include "lemon/router.h"
 
 #include <map>
@@ -11,12 +12,27 @@ namespace lemon {
 ClassifierServices make_router_classifier_services(
     Router& router,
     EnsureClassifierModelLoaded ensure_loaded) {
-    return make_classifier_services_from_router_calls(
+    ClassifierServices services = make_classifier_services_from_router_calls(
         [&router](const json& request) { return router.embeddings(request); },
         [&router](const json& request) { return router.chat_completion(request); },
         std::move(ensure_loaded),
         [&router](const json& request) { return router.classify(request); },
         [&router](const std::string& model) { return router.get_model_type(model); });
+    // The engine's resident router daemon (`1bit route --serve`, docs/laya-first.md): the `laya`
+    // classifier type asks it for the request class instead of loading a model of its own. A daemon
+    // that is absent or dead answers ok=false, so the condition applies on_error rather than the
+    // request failing.
+    services.laya = [](const std::string& text) {
+        const backends::onebit::LayaAnswer answer = backends::onebit::laya_decide(text);
+        LayaDecision decision;
+        decision.ok = answer.ok;
+        decision.label = answer.label;
+        decision.confidence = answer.confidence;
+        decision.device = answer.device;
+        decision.decision_ms = answer.decision_ms;
+        return decision;
+    };
+    return services;
 }
 
 CostServices make_router_cost_services(Router& router) {

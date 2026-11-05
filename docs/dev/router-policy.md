@@ -102,16 +102,30 @@ window, estimate ~4 bytes per token.
 | `llm` | An LLM picks exactly one of the declared `labels` for the request (with a rationale); the chosen label scores `1.0`, the rest `0`. You supply the `model` and a `prompt` describing when to choose each label. |
 | `laya` | The engine's own router daemon picks one of Laya's request classes (`code`, `prose`, `short`, `long_doc`); the class's calibrated confidence is the score, so `min_score` gates on how sure Laya is. No `model` and no `prompt`: it runs no model of its own. |
 
-A `laya` classifier asks the resident `1bit route --serve` daemon (the engine's Laya scorer, kept
-loaded so a decision costs 0.4–0.85 s of CPU and no GPU) instead of loading a model into the
-router's residency set. `labels` are optional and default to all four classes; a typo in a label is
-a parse error, because the engine names the classes. The engine resolves the daemon from
-`LEMONADE_ONEBIT_BIN` and the checkpoint from the `LEMONADE_LAYA_MODEL` variable
-(`docs/lemonade.md`); with neither, the classifier is unwired and a condition on it applies its
-`on_error` — a missing daemon is a failed classifier, never a wrong route. A class the policy did
-not declare falls back to `default_label`, exactly as an unknown `llm` choice does. Its
-`rationale` in the trace names both Laya's class and the device the engine's own policy picked,
-which is the only place the two policies' disagreement is visible.
+A `laya` classifier asks the resident `1bit route --serve` daemon instead of loading a model into the
+router's residency set. `labels` are optional and default to all four classes; a typo in a label is a
+parse error, because the engine names the classes. A class the policy did not declare falls back to
+`default_label`, exactly as an unknown `llm` choice does. Its `rationale` in the trace names both
+Laya's class and the device the engine's own policy picked, which is the only place the two policies'
+disagreement is visible.
+
+The daemon is one process for the life of lemond, started on the first `laya` decision and restarted
+if it dies; it is the engine binary from `LEMONADE_ONEBIT_BIN` (else `1bit` on `$PATH`), run as
+`1bit route --serve`. The scorer's load is paid there once, which is what makes a per-request Laya
+decision affordable (2.7 s of load against 0.4–0.85 s a decision on the CPU scorer). Three variables
+adjust it:
+
+| variable | effect |
+|---|---|
+| `LEMONADE_LAYA_MODEL` | the Laya checkpoint to pass as `--laya-model`; when unset the engine resolves it exactly as `serve --laya` does (`$ONEBIT_LAYA_MODEL`, else `~/.local/share/1bit/laya`) |
+| `LEMONADE_LAYA_DEVICES` | candidate devices for the daemon's own route policy (`hrx,npu,cpu`), which only affects the `device` it reports — this policy does the routing |
+| `LEMONADE_LAYA_START_TIMEOUT_MS` / `LEMONADE_LAYA_DECISION_TIMEOUT_MS` | bounds on the scorer load and on one decision (defaults 60000 / 30000 ms) |
+
+An absent, dead, babbling or slow daemon is a **failed classifier**: the condition applies its
+`on_error`, and the request still routes. It is never a wrong label, never an exception out of
+`route()`, and never a hang — a bounded timeout returns the failure. After a failed start the client
+waits 5 s before forking another daemon, so a routing storm with no engine installed does not turn
+into a fork storm.
 
 A classifier condition is a band test: `{ "classifier": "<id>", "label": "<name>",
 "min_score": 0.5, "max_score": 1.0 }` (omitting both bounds defaults to
