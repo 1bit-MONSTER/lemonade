@@ -32,7 +32,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include <csignal>
 #include <chrono>
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -57,6 +59,8 @@ namespace {
 // line by echoing the state back as the class, so the test can see what reached it.
 const char* kFakeDaemon = R"SH(#!/usr/bin/env bash
 printf '%s\n' "$@" > "$LAYA_TEST_ARGV"
+ls /proc/self/fd | tr '\n' ' ' > "$LAYA_TEST_FDS"
+echo $$ > "$LAYA_TEST_PID"
 echo '{"ready":true,"load_ms":12.5}'
 while IFS= read -r line; do
     case "$line" in
@@ -100,6 +104,7 @@ int main() {
     std::ofstream(leak_path) << "held open across the fork\n";
     const int leak_fd = ::dup2(::open(leak_path.c_str(), O_RDONLY), 42);
     ::setenv("LAYA_TEST_FDS", (scratch / "fds.txt").c_str(), 1);
+    ::setenv("LAYA_TEST_PID", (scratch / "pid.txt").c_str(), 1);
     ::unsetenv("LEMONADE_LAYA_MODEL");
     ::unsetenv("LEMONADE_LAYA_DEVICES");
 
@@ -114,8 +119,9 @@ int main() {
         std::ifstream in(scratch / "fds.txt");
         daemon_fds.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
     }
+    check("the daemon reported its descriptors (the check below is not vacuous)", !daemon_fds.empty());
     check("the daemon did not inherit this process's descriptors",
-          leak_fd == 42 && daemon_fds.find("42") == std::string::npos);
+          leak_fd == 42 && !daemon_fds.empty() && daemon_fds.find("42") == std::string::npos);
     check("the daemon wrote its argv", fs::exists(argv_log));
     if (fs::exists(argv_log)) {
         std::ifstream in(argv_log);
@@ -142,7 +148,16 @@ int main() {
     auto restarted = laya_decide("Write a Go function that reverses a string.");
     check("the next call restarts the daemon", restarted.ok && restarted.label == "code");
 
+    // Shutdown has to reap the daemon, not orphan it: a routing helper that outlives the server it
+    // belongs to holds memory and a GPU-less CPU (and, before the descriptor fix, its sockets).
+    long daemon_pid = 0;
+    if (fs::exists(scratch / "pid.txt")) {
+        std::ifstream in(scratch / "pid.txt");
+        in >> daemon_pid;
+    }
     laya_shutdown();
+    ::usleep(500 * 1000);
+    check("shutdown reaps the daemon (no orphan)", daemon_pid > 1 && ::kill(static_cast<pid_t>(daemon_pid), 0) != 0);
 
     // 5. A binary that does not exist: failed decision, and it is not retried on every request.
     const std::string missing = (scratch / "no-such-1bit").string();
