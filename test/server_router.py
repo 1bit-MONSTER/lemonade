@@ -18,6 +18,7 @@ Usage:
 """
 
 import json as _json
+import os
 import threading
 import platform
 from concurrent.futures import ThreadPoolExecutor
@@ -1239,6 +1240,126 @@ class RouterTests(ServerTestBase):
             self.assertIsNotNone(lo)
             self.assertLess(lo, 0.5)
             print(f"[OK] classifier benign ({lo:.3f}) -> {DEFAULT_MODEL}")
+        finally:
+            self._delete_collection(collection)
+
+
+    # A stand-in for the engine's resident Laya router (`1bit route --serve`,
+    # docs/laya-first.md §8 step 1): says ready, then answers one decision per line. `code` when the
+    # prompt looks like code, `prose` otherwise, so a test can prove which rule fired.
+    LAYA_FAKE_DAEMON = '''#!/usr/bin/env python3
+import json, sys
+print(json.dumps({"ready": True, "load_ms": 1.0}), flush=True)
+for line in sys.stdin:
+    try:
+        state = json.loads(line).get("state", "")
+    except ValueError:
+        continue
+    code = any(k in state for k in ("def ", "function", "class ", "import "))
+    print(json.dumps({"class": "code" if code else "prose",
+                      "confidence": 0.91 if code else 0.77,
+                      "device": "hrx", "decision_ms": 0.4}), flush=True)
+'''
+
+    def test_640_laya_classifier_routing(self):
+        """A `laya` condition routes on the engine's request class, end to end.
+
+        The engine's router daemon decides the class (`1bit route --serve`,
+        docs/laya-first.md §8) and this policy turns Laya's class into a model choice.
+        Laya's calibrated confidence is the score, so `min_score` is a real gate: the
+        `code` rule below asks for 0.5 and the daemon answers 0.91, while the prose
+        rule is deliberately at 0.0 because Laya's prose confidence is ~0.44-0.77 and
+        the band's default floor of 0.5 would drop it.
+
+        Needs a server started with a stand-in daemon, because no Laya checkpoint is
+        installed on a test machine:
+
+            LEMONADE_ONEBIT_BIN=<the LAYA_FAKE_DAEMON script> lemond ...
+            LEMONADE_TEST_LAYA_DAEMON=<the same path> python server_router.py
+
+        Skipped otherwise, and it says which variable it wanted.
+        """
+        def laya_scores(decision):
+            """Every score this classifier put in the trace. The rules are evaluated
+            in order, so a `code` probe also records a score for the prose rule and
+            vice versa; the matching one carries Laya's confidence."""
+            return [
+                t.get("score")
+                for t in decision.get("trace", [])
+                if t.get("condition") == "classifier:laya"
+            ]
+
+        daemon = os.environ.get("LEMONADE_TEST_LAYA_DAEMON")
+        if not daemon:
+            self.skipTest(
+                "laya-classifier e2e needs a stand-in daemon: start lemond with "
+                "LEMONADE_ONEBIT_BIN=<script>, and set LEMONADE_TEST_LAYA_DAEMON to the same path"
+            )
+        collection = "user.Test-Router-Laya"
+        policy = {
+            "version": "1",
+            "model_name": collection,
+            "recipe": "collection.router",
+            "components": [DEFAULT_MODEL, CAPABLE_MODEL],
+            "routing": {
+                "candidates": [DEFAULT_MODEL, CAPABLE_MODEL],
+                "default_model": DEFAULT_MODEL,
+                "classifiers": [
+                    {
+                        "id": "laya",
+                        "type": "laya",
+                        "labels": ["code", "prose"],
+                    }
+                ],
+                "rules": [
+                    {
+                        "id": "code-to-capable",
+                        "match": {"classifier": "laya", "label": "code", "min_score": 0.5},
+                        "route_to": CAPABLE_MODEL,
+                    },
+                    {
+                        "id": "prose-stays-small",
+                        "match": {"classifier": "laya", "label": "prose", "min_score": 0.0},
+                        "route_to": DEFAULT_MODEL,
+                    },
+                ],
+            },
+        }
+        resp = requests.post(
+            f"{self.base_url}/pull", json=policy, timeout=TIMEOUT_DEFAULT
+        )
+        self.assertEqual(resp.status_code, 200, f"register failed: {resp.text}")
+        try:
+            header, decision, _ = self._route(
+                "Write a Python function that reverses a linked list.",
+                collection=collection,
+            )
+            self.assertEqual(
+                decision.get("route_to"),
+                CAPABLE_MODEL,
+                f"a code request must route on Laya's class; header={header} decision={decision}. "
+                f"If route_to is {DEFAULT_MODEL} with default_used, the server is not running with "
+                f"LEMONADE_ONEBIT_BIN={daemon}",
+            )
+            self.assertEqual(decision.get("matched_rule"), "code-to-capable")
+            self.assertFalse(decision.get("default_used"))
+            scores = laya_scores(decision)
+            self.assertIn(0.91, [round(x, 2) for x in scores if x is not None],
+                          f"Laya's confidence must reach the trace, got {scores}")
+            print(f"[OK] laya code ({max(scores):.3f}) -> {CAPABLE_MODEL}")
+
+            header, decision, _ = self._route(
+                "Summarise this article about lakes in two sentences.",
+                collection=collection,
+            )
+            self.assertEqual(decision.get("route_to"), DEFAULT_MODEL)
+            self.assertEqual(decision.get("matched_rule"), "prose-stays-small")
+            scores = laya_scores(decision)
+            # The prose rule is min_score 0.0, so a 0.77 confidence routes on the *class*, not on a
+            # lucky band; a boolean classifier could not produce this number.
+            self.assertIn(0.77, [round(x, 2) for x in scores if x is not None],
+                          f"Laya's prose confidence must reach the trace, got {scores}")
+            print(f"[OK] laya prose ({max(scores):.3f}) -> {DEFAULT_MODEL}")
         finally:
             self._delete_collection(collection)
 
