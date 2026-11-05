@@ -3,6 +3,7 @@ import api, { friendlyErrorMessage } from '../api';
 import { BackendTuning } from '../modelConfiguration';
 import { Icon, type IconName } from './Icon';
 import { WorkspaceCatalogLayout, WorkspaceCatalogSection } from './WorkspaceCatalogLayout';
+import { OnebitEngineLogo } from './OnebitEngineLogo';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { recipeCapability } from '../features/backends/recipeMetadata';
 import { DownloadListItem, downloadStore, isDownloadActive } from '../features/downloadManager/downloadStore';
@@ -78,6 +79,9 @@ const RECIPE_LABELS: Record<string, string> = {
   thinksound:      'ThinkSound',
   openmoss:        'OpenMOSS TTS',
   trellis:         'TRELLIS.2',
+  // 1bit's own engine: the card's label is the site's wordmark, so the mark beside it reads
+  // "1bit engine" instead of the recipe id.
+  onebit:          '1bit engine',
 };
 
 const ENGINE_LOGO_BASE = 'https://raw.githubusercontent.com/lemonade-sdk/assets/main/engines/';
@@ -1115,7 +1119,7 @@ const BackendManager: React.FC<BackendManagerProps> = ({ isActive = true }) => {
                 aria-hidden="true"
                 data-backend-logo
               >
-                {logo && (
+                {logo ? (
                   <img
                     src={`${ENGINE_LOGO_BASE}${logo.file}`}
                     alt=""
@@ -1125,7 +1129,11 @@ const BackendManager: React.FC<BackendManagerProps> = ({ isActive = true }) => {
                       event.currentTarget.parentElement!.className = 'backend-card__logo';
                     }}
                   />
-                )}
+                ) : recipe === 'onebit' ? (
+                  // Upstream engines' logos are fetched from raw.githubusercontent, which the
+                  // appliance cannot reach; ours is inlined and needs no font or network.
+                  <OnebitEngineLogo />
+                ) : null}
                 <span className="backend-card__logo-name">{engineName}</span>
               </div>
             </>
