@@ -1038,11 +1038,21 @@ void Router::load_model(const std::string& model_name,
                         evict_server(holder, kEvictionTimeoutSeconds);
                     }
                 }
-                if (!holders.empty()) {
+                // Re-read residency rather than trusting the last collection: an eviction that
+                // succeeded on the final attempt has already destroyed those servers, so a stale
+                // pointer here would both throw a false conflict and read freed memory.
+                WrappedServer* still_here = nullptr;
+                for (const auto& server : loaded_servers_) {
+                    if (server->is_backend_alive() && holds_exclusive_npu(*server)) {
+                        still_here = server.get();
+                        break;
+                    }
+                }
+                if (still_here) {
                     throw RouterResidencyConflictException(
-                        canonical_model_name, holders.front()->get_model_name(),
-                        model_info.recipe + " needs the NPU, and " +
-                            holders.front()->get_model_name() + " is still serving on it");
+                        canonical_model_name, still_here->get_model_name(),
+                        model_info.recipe + " needs the NPU, and " + still_here->get_model_name() +
+                            " is still serving on it");
                 }
                 break;
             }
