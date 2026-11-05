@@ -61,7 +61,7 @@ public:
         bool filter_health_logs,
         const std::vector<std::pair<std::string, std::string>>& env_vars) override;
 
-    void terminate(ProcessHandle handle) override;
+    void terminate(ProcessHandle handle, int cleanup_wait_ms) override;
     bool is_running(ProcessHandle handle) override;
     int get_exit_code(ProcessHandle handle) override;
     int wait_for_exit(ProcessHandle handle, int timeout_seconds) override;
@@ -271,7 +271,13 @@ ProcessHandle MacOSProcessPlatform::spawn(
 }
 
 // Reuse Unix implementations for other methods
-void MacOSProcessPlatform::terminate(ProcessHandle handle) {
+// Same wait as Linux (a Vulkan/ROCm context can outlive the child, upstream #514); a backend that has
+// measured its own child passes its value, and -1 keeps the 2 s default.
+static std::chrono::milliseconds cleanup_wait(int backend_ms) {
+    return std::chrono::milliseconds(backend_ms >= 0 ? backend_ms : 2000);
+}
+
+void MacOSProcessPlatform::terminate(ProcessHandle handle, int backend_wait_ms) {
     if (handle.pid <= 0) {
         return;
     }
@@ -285,7 +291,7 @@ void MacOSProcessPlatform::terminate(ProcessHandle handle) {
             LOG(INFO, "ProcessManager") << "Process already exited; reaped PID "
                                         << handle.pid << std::endl;
             LOG(INFO, "ProcessManager") << "Process terminated, waiting for GPU driver cleanup..." << std::endl;
-            std::this_thread::sleep_for(std::chrono::seconds(2));
+            std::this_thread::sleep_for(cleanup_wait(backend_wait_ms));
             return;
         }
     } else if (errno == ECHILD) {
@@ -327,7 +333,7 @@ void MacOSProcessPlatform::terminate(ProcessHandle handle) {
     }
 
     LOG(INFO, "ProcessManager") << "Process terminated, waiting for GPU driver cleanup..." << std::endl;
-    std::this_thread::sleep_for(std::chrono::seconds(2));
+    std::this_thread::sleep_for(cleanup_wait(backend_wait_ms));
 }
 
 bool MacOSProcessPlatform::is_running(ProcessHandle handle) {

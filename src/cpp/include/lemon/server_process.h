@@ -42,6 +42,10 @@ public:
     utils::ProcessHandle handle() const { return handle_; }
     const std::vector<std::string>& command_line() const { return command_line_; }
 
+    // The wait after this server's child exits, before the next child may start. -1 keeps the
+    // platform default (2 s); a backend whose child is reaped before the wait passes its own.
+    void set_cleanup_wait_ms(int ms) { cleanup_wait_ms_ = ms; }
+
 protected:
     void spawn(std::vector<std::string> command_line, const std::string& working_dir,
                const std::vector<std::pair<std::string, std::string>>& env);
@@ -51,6 +55,7 @@ protected:
 
 private:
     ProcessOutput output_;
+    int cleanup_wait_ms_ = -1;
 };
 
 class NativeProcess : public ServerProcess {

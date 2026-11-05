@@ -323,7 +323,16 @@ void OnebitServer::load(const std::string& model_name,
     }
     command.port = backend_port;
     try {
-        start_server(std::make_unique<NativeProcess>(ProcessOutput{inherit_output, true}), command);
+        auto process = std::make_unique<NativeProcess>(ProcessOutput{inherit_output, true});
+        // Measured on HRX (this box): the child is reaped before the wait starts, exit-and-respawn costs
+        // 0.115 s median / 0.197 s max, and 100 evict+load cycles at 0 and 250 ms were clean (no failed
+        // load, no dead child, no router retry). 250 ms is ~2x that. The NPU keeps the platform default:
+        // its 2 s is a third of an NPU switch and the driver's teardown is not measured, so nothing here
+        // shortens a device whose risk is unknown.
+        if (device_type_ == DEVICE_GPU) {
+            process->set_cleanup_wait_ms(250);
+        }
+        start_server(std::move(process), command);
     } catch (const std::runtime_error& e) {
         throw std::runtime_error("1bit serve failed to start for '" + model_name + "' (" + command.program + "): " + e.what());
     }

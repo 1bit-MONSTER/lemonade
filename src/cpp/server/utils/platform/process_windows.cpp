@@ -353,7 +353,7 @@ public:
         return handle;
     }
 
-    void terminate(ProcessHandle handle) override {
+    void terminate(ProcessHandle handle, int /*cleanup_wait_ms*/) override {
         if (handle.handle) {
             TerminateProcess(handle.handle, 0);
             WaitForSingleObject(handle.handle, 5000);  // Wait up to 5 seconds
