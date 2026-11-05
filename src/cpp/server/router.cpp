@@ -4,6 +4,8 @@
 #include "lemon/backends/backend_registry.h"
 #include "lemon/backends/cloud/cloud_server.h"
 #include "lemon/backends/llamacpp/llamacpp_server.h"
+#include "lemon/backends/onebit/onebit.h"
+#include "lemon/backends/onebit/onebit_slot_policy.h"
 #include "lemon/backends/fastflowlm/fastflowlm_server.h"
 #include "lemon/backends/ryzenai/ryzenai_server.h"
 #include "lemon/backends/whispercpp/whispercpp_server.h"
@@ -292,6 +294,28 @@ static SlotPolicy slot_policy_for_recipe(const std::string& recipe) {
 
 static bool is_unmetered_recipe(const std::string& recipe) {
     return slot_policy_for_recipe(recipe) == SlotPolicy::Unmetered;
+}
+
+// A backend whose exclusivity depends on the variant answers here; every other recipe keeps its
+// descriptor's policy. onebit is the case: `--onebit npu` claims the whole NPU (the array runs one
+// hardware context at a time, issue 0011) while `--onebit hrx` shares the GPU with its peers.
+static SlotPolicy slot_policy_for_load(const std::string& recipe, const RecipeOptions& options) {
+    if (recipe == backends::onebit::descriptor.recipe) {
+        const auto backend = options.get_option("onebit_backend");
+        return backends::onebit::slot_policy_for_backend_option(
+            backend.is_string() ? backend.get<std::string>() : std::string());
+    }
+    return slot_policy_for_recipe(recipe);
+}
+
+// Does this resident hold the NPU exclusively? onebit answers from its variant (`--onebit npu`) and
+// reports DEVICE_GPU until it loads, so the policy has to answer first; a backend that reports the
+// NPU device itself but does not declare coexistence (FLM) is a holder too.
+static bool holds_exclusive_npu(const WrappedServer& server) {
+    const SlotPolicy policy = server.effective_slot_policy(server.get_recipe_options());
+    if (policy == SlotPolicy::ExclusiveNpu) return true;
+    if (policy == SlotPolicy::CoexistByType) return false;
+    return (server.get_device_type() & DEVICE_NPU) != 0;
 }
 
 int Router::count_servers_in_pool(ModelType type,
@@ -964,14 +988,14 @@ void Router::load_model(const std::string& model_name,
         //   CoexistByType (flm): coexist with other FLM types (max 1 per type),
         //                but evict exclusive-NPU peers.
         // Standard/Unmetered backends share no device exclusivity.
-        switch (slot_policy_for_recipe(model_info.recipe)) {
+        switch (slot_policy_for_load(model_info.recipe, effective_options)) {
             case SlotPolicy::ExclusiveNpu: {
                 // Hardware exclusivity is stronger than count-based pools. Never
                 // alternate a router helper and its candidate across the same NPU:
                 // reject the cross-residency combination deterministically instead.
                 for (const auto& server : loaded_servers_) {
                     if (server->is_backend_alive() &&
-                        (server->get_device_type() & DEVICE_NPU) &&
+                        holds_exclusive_npu(*server) &&
                         should_reject_residency_displacement(
                             requested_residency_class,
                             server->get_residency_class())) {
@@ -981,10 +1005,55 @@ void Router::load_model(const std::string& model_name,
                             model_info.recipe + " requires exclusive NPU access");
                     }
                 }
-                if (has_npu_server()) {
+                std::vector<WrappedServer*> holders;
+                for (const auto& server : loaded_servers_) {
+                    if (server->is_backend_alive() && holds_exclusive_npu(*server)) {
+                        holders.push_back(server.get());
+                    }
+                }
+                if (!holders.empty()) {
                     LOG(INFO, "Router") << model_info.recipe
-                              << " requires exclusive NPU access, evicting all NPU servers..." << std::endl;
-                    evict_all_npu_servers();
+                              << " requires exclusive NPU access, evicting the NPU holders:";
+                    for (auto* holder : holders) {
+                        LOG(INFO, "Router") << " " << holder->get_model_name();
+                    }
+                    LOG(INFO, "Router") << std::endl;
+                }
+                // evict_server() defers while a request is still unwinding, and a second live
+                // hardware context on the array is exactly what wedges the NPU (issue 0011), so
+                // wait for the holder to finish instead of starting a context beside it. This is
+                // the "queue behind the eviction" half: the caller waits here, and only a holder
+                // that never finishes turns into a named refusal.
+                constexpr int kEvictionTimeoutSeconds = 10;
+                constexpr int kEvictionRetries = 8;
+                for (int attempt = 0; attempt < kEvictionRetries; ++attempt) {
+                    holders.clear();
+                    for (const auto& server : loaded_servers_) {
+                        if (server->is_backend_alive() && holds_exclusive_npu(*server)) {
+                            holders.push_back(server.get());
+                        }
+                    }
+                    if (holders.empty()) break;
+                    for (auto* holder : holders) {
+                        LOG(INFO, "Router") << "Evicting NPU holder: " << holder->get_model_name() << std::endl;
+                        evict_server(holder, kEvictionTimeoutSeconds);
+                    }
+                }
+                // Re-read residency rather than trusting the last collection: an eviction that
+                // succeeded on the final attempt has already destroyed those servers, so a stale
+                // pointer here would both throw a false conflict and read freed memory.
+                WrappedServer* still_here = nullptr;
+                for (const auto& server : loaded_servers_) {
+                    if (server->is_backend_alive() && holds_exclusive_npu(*server)) {
+                        still_here = server.get();
+                        break;
+                    }
+                }
+                if (still_here) {
+                    throw RouterResidencyConflictException(
+                        canonical_model_name, still_here->get_model_name(),
+                        model_info.recipe + " needs the NPU, and " + still_here->get_model_name() +
+                            " is still serving on it");
                 }
                 break;
             }
@@ -994,9 +1063,7 @@ void Router::load_model(const std::string& model_name,
                 //    whisper-on-npu. Collect first; evict_server mutates loaded_servers_.
                 std::vector<WrappedServer*> exclusive_peers;
                 for (const auto& server : loaded_servers_) {
-                    if (server->is_backend_alive() && (server->get_device_type() & DEVICE_NPU) &&
-                        slot_policy_for_recipe(server->get_recipe_options().get_recipe()) !=
-                            SlotPolicy::CoexistByType) {
+                    if (server->is_backend_alive() && holds_exclusive_npu(*server)) {
                         if (should_reject_residency_displacement(
                                 requested_residency_class,
                                 server->get_residency_class())) {

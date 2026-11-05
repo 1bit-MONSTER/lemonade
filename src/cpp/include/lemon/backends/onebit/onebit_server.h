@@ -23,6 +23,10 @@ public:
               const RecipeOptions& options,
               bool do_not_upgrade = false) override;
 
+    // `--onebit npu` claims the whole NPU (one model at a time, issue 0011); `hrx` shares the GPU.
+    // The descriptor names one policy per recipe, so this varies with the load's options instead.
+    SlotPolicy effective_slot_policy(const RecipeOptions& options) const override;
+
     // This Lemonade's API base URL: `1bit serve --pm` (recipe option onebit_pm) asks it to run
     // the expert models it delegates to (--lemonade-url).
     void set_lemonade_url(std::string url) { lemonade_url_ = std::move(url); }
