@@ -3,6 +3,7 @@
 #include "lemon/backends/onebit/laya_client.h"
 #include "lemon/router.h"
 
+#include <lemon/models/model_info.h>
 #include <map>
 #include <mutex>
 #include <utility>
