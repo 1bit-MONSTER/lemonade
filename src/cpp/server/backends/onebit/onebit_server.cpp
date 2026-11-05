@@ -3,6 +3,7 @@
 
 #include "lemon/backends/backend_ops.h"
 #include "lemon/backends/onebit/onebit.h"
+#include "lemon/backends/onebit/onebit_slot_policy.h"
 #include "lemon/utils/http_client.h"
 #include "lemon/server_process.h"
 #include "lemon/utils/process_manager.h"
@@ -216,6 +217,14 @@ void send_warmup(int port, const nlohmann::json& warmup) {
 }
 
 }  // namespace
+
+SlotPolicy OnebitServer::effective_slot_policy(const RecipeOptions& options) const {
+    // `--onebit npu` owns the NPU: the array runs one hardware context at a time (issue 0011,
+    // engine #1084/#1085), so the router must evict NPU peers before this load. HRX shares the GPU.
+    const auto backend = options.get_option("onebit_backend");
+    return onebit::slot_policy_for_backend_option(
+        backend.is_string() ? backend.get<std::string>() : std::string());
+}
 
 void OnebitServer::load(const std::string& model_name,
                         const ModelInfo& model_info,
