@@ -192,13 +192,22 @@ BackendPlan plan_backend(const std::string& bin, std::vector<std::string> serve_
     return plan;
 }
 
+// How long the one-hop warm-up may hold the load. The plan's warm-ups are what HRX builds its per-shape
+// programs with, so they take hundreds of milliseconds when they work at all; 600 s was the HTTP client's
+// generic bound and it does not belong on a request the load path waits behind. Measured cost of getting
+// this wrong (c26 evidence, 2026-11-05 05:53): a 1.2B model auto-resolved to a 128k window on a shared
+// GPU, the warm-up chat sat for the full ten minutes, and `POST /api/v1/load` returned before it while
+// nothing else happened -- the operator sees a load that "succeeded" and a model that never answers.
+constexpr long kOneHopWarmupTimeoutSeconds = 30;
+
 // One hop: what `1bit serve` did between "backend ready" and its first client request. A failed
 // warm-up only costs the first request its speed, so it is logged, not fatal (as in serve).
 void send_warmup(int port, const nlohmann::json& warmup) {
     const std::string url = "http://127.0.0.1:" + std::to_string(port) + warmup["path"].get<std::string>();
     const auto t0 = std::chrono::steady_clock::now();
     try {
-        const auto r = utils::HttpClient::post(url, warmup["body"].dump(), {{"Content-Type", "application/json"}}, 600,
+        const auto r = utils::HttpClient::post(url, warmup["body"].dump(), {{"Content-Type", "application/json"}},
+                                               kOneHopWarmupTimeoutSeconds,
                                                utils::HttpSecurityPolicy::TrustedLoopback);
         const long ms = static_cast<long>(std::chrono::duration_cast<std::chrono::milliseconds>(
                                               std::chrono::steady_clock::now() - t0).count());
@@ -210,8 +219,14 @@ void send_warmup(int port, const nlohmann::json& warmup) {
                                  << " failed (HTTP " << r.status_code << ")" << std::endl;
         }
     } catch (const std::exception& e) {
-        LOG(WARNING, "1bit") << "one hop: warm-up request " << warmup["path"].get<std::string>() << " failed ("
-                             << e.what() << ")" << std::endl;
+        const long ms = static_cast<long>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                              std::chrono::steady_clock::now() - t0).count());
+        LOG(WARNING, "1bit") << "one hop: warm-up request " << warmup["path"].get<std::string>() << " failed after "
+                             << ms << " ms (" << e.what() << ")"
+                             << (ms >= kOneHopWarmupTimeoutSeconds * 1000
+                                     ? "; the model is loaded, but its first request pays what the warm-up could not"
+                                     : "")
+                             << std::endl;
     }
 }
 
