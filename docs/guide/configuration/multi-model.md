@@ -80,6 +80,8 @@ When a model slot is full:
 
 Models currently processing inference requests cannot be evicted until they finish.
 
+A switch is not instant: the evicted backend process is terminated and the server waits for the GPU driver to release its context before starting the next one. That wait is 2 seconds by default on Linux and can be changed with `LEMONADE_GPU_CLEANUP_WAIT_MS`; with the default `max_loaded_models=1` it is paid on every switch.
+
 ## Dynamic VRAM Management (opt-in)
 
 In addition to the slot-based LRU policy, Lemonade can dynamically free VRAM based on **idle time** and **global GPU memory pressure**, so the server coexists with other GPU-heavy apps (ComfyUI, Blender, games) while minimizing cold starts. This feature is **opt-in** and disabled by default.
