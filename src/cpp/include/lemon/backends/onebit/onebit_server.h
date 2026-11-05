@@ -47,7 +47,16 @@ std::string validate_args(const std::string& onebit_args);
 std::unique_ptr<WrappedServer> create(const BackendContext& ctx);
 const BackendSpec* spec();
 const BackendOps* ops();
-constexpr uint32_t capabilities() { return capability_mask_of<OnebitServer>(); }
+// OnebitServer derives from LlamaCppServer, so the derived mask picks up every
+// interface that backend implements — including classification. llama.cpp's
+// classify() is gated on `decision_model_`, which LlamaCppServer::load() sets from
+// the model's `systemone` label; our load() replaces it and never sets the flag, so
+// for the onebit recipe classify() answers "unsupported". The mask must describe
+// what this backend actually serves (chat, embeddings, reranking), not the
+// interfaces its base class happens to carry.
+constexpr uint32_t capabilities() {
+    return capability_mask_of<OnebitServer>() & ~lemon::CAP_CLASSIFICATION;
+}
 
 }  // namespace onebit
 
