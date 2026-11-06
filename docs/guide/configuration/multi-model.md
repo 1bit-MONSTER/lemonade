@@ -80,7 +80,7 @@ When a model slot is full:
 
 Models currently processing inference requests cannot be evicted until they finish.
 
-A switch is not instant: the evicted backend process is terminated and the server waits for the GPU driver to release its context before starting the next one. That wait is 2 seconds by default on Linux and can be changed with `LEMONADE_GPU_CLEANUP_WAIT_MS`; with the default `max_loaded_models=1` it is paid on every switch.
+A switch is not instant: the evicted backend process is terminated and the server waits for the GPU driver to release its context before starting the next one. That wait is 2 seconds by default on Linux and can be changed with `LEMONADE_GPU_CLEANUP_WAIT_MS`; with the default `max_loaded_models=1` it is paid on every switch. A backend whose child is reaped before the wait may ask for its own, shorter wait: the `onebit` backend does on its GPU path (250 ms, measured), and setting `LEMONADE_GPU_CLEANUP_WAIT_MS` still overrides it.
 
 ## Dynamic VRAM Management (opt-in)
 

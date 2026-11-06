@@ -161,6 +161,54 @@ int main() {
         }
     }
 
+    {
+        ::unsetenv("LEMONADE_GPU_CLEANUP_WAIT_MS");
+        const pid_t child = spawn_running_child();
+        if (child > 0) {
+            const ProcessHandle handle = make_handle(child);
+            const auto start = std::chrono::steady_clock::now();
+            ProcessManager::stop_process(handle, 0);
+            const auto elapsed = std::chrono::steady_clock::now() - start;
+            check("a backend's own 0 ms wait removes the GPU-cleanup delay with nothing in the environment",
+                  elapsed < std::chrono::milliseconds(1000));
+            check("stop_process() with a backend wait leaves no running child behind",
+                  !ProcessManager::is_running(handle));
+        }
+    }
+
+    {
+        ::unsetenv("LEMONADE_GPU_CLEANUP_WAIT_MS");
+        const pid_t child = spawn_running_child();
+        if (child > 0) {
+            const ProcessHandle handle = make_handle(child);
+            const auto start = std::chrono::steady_clock::now();
+            ProcessManager::stop_process(handle, 250);
+            const auto elapsed = std::chrono::steady_clock::now() - start;
+            check("a backend's 250 ms wait is what runs, not the 2 s default",
+                  elapsed >= std::chrono::milliseconds(200) &&
+                      elapsed < std::chrono::milliseconds(1200));
+            check("stop_process() with a 250 ms wait leaves no running child behind",
+                  !ProcessManager::is_running(handle));
+        }
+    }
+
+    {
+        // The operator's environment variable is their word: it wins over a backend's value.
+        ::setenv("LEMONADE_GPU_CLEANUP_WAIT_MS", "0", 1);
+        const pid_t child = spawn_running_child();
+        if (child > 0) {
+            const ProcessHandle handle = make_handle(child);
+            const auto start = std::chrono::steady_clock::now();
+            ProcessManager::stop_process(handle, 2000);
+            const auto elapsed = std::chrono::steady_clock::now() - start;
+            ::unsetenv("LEMONADE_GPU_CLEANUP_WAIT_MS");
+            check("LEMONADE_GPU_CLEANUP_WAIT_MS wins over a backend's own wait",
+                  elapsed < std::chrono::milliseconds(1000));
+            check("stop_process() with an env override leaves no running child behind",
+                  !ProcessManager::is_running(handle));
+        }
+    }
+
     if (failures == 0) {
         std::printf("\nAll process_manager tests passed\n");
         return 0;

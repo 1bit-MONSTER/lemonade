@@ -21,7 +21,10 @@ public:
         bool filter_health_logs,
         const std::vector<std::pair<std::string, std::string>>& env_vars) = 0;
 
-    virtual void terminate(ProcessHandle handle) = 0;
+    // cleanup_wait_ms is the wait after the child exits, before the next child may start:
+    // -1 keeps the platform default (on Linux, LEMONADE_GPU_CLEANUP_WAIT_MS or 2 s), and a
+    // backend that has measured its own child passes its value.
+    virtual void terminate(ProcessHandle handle, int cleanup_wait_ms) = 0;
     virtual bool is_running(ProcessHandle handle) = 0;
     virtual int get_exit_code(ProcessHandle handle) = 0;
     virtual int wait_for_exit(ProcessHandle handle, int timeout_seconds) = 0;
