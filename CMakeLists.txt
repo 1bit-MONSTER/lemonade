@@ -2753,6 +2753,23 @@ if(BUILD_TESTING AND EXISTS "${_ONEBIT_SLOT_POLICY_TEST_SRC}")
     add_cpp_ci_test(OnebitSlotPolicyTest CI ON COMMAND test_onebit_slot_policy)
 endif()
 
+# Which backend answers mean "the NPU's context is dead, the request is worth one replay":
+# Router::execute_inference replays a non-streamed request once when the engine answers with its
+# failed-runlist frame (code 614). Header-only predicate, so this links only nlohmann/json.
+set(_ONEBIT_DEVICE_LOST_TEST_SRC
+    "${CMAKE_CURRENT_SOURCE_DIR}/test/cpp/test_onebit_device_lost.cpp"
+)
+if(BUILD_TESTING AND EXISTS "${_ONEBIT_DEVICE_LOST_TEST_SRC}")
+    add_executable(test_onebit_device_lost test/cpp/test_onebit_device_lost.cpp)
+    target_include_directories(test_onebit_device_lost PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/cpp/include
+        ${CMAKE_CURRENT_BINARY_DIR}/include
+    )
+    target_link_libraries(test_onebit_device_lost PRIVATE nlohmann_json::nlohmann_json)
+    include(CTest)
+    add_cpp_ci_test(OnebitDeviceLostTest CI ON COMMAND test_onebit_device_lost)
+endif()
+
 if(BUILD_TESTING AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/cpp/test_hrx_contract.cpp")
     add_executable(test_hrx_contract test/cpp/test_hrx_contract.cpp)
     target_link_libraries(test_hrx_contract PRIVATE lemonade-server-core)
