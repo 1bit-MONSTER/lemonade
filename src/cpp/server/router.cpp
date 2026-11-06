@@ -5,6 +5,7 @@
 #include "lemon/backends/cloud/cloud_server.h"
 #include "lemon/backends/llamacpp/llamacpp_server.h"
 #include "lemon/backends/onebit/onebit.h"
+#include "lemon/backends/onebit/onebit_device_lost.h"
 #include "lemon/backends/onebit/onebit_slot_policy.h"
 #include "lemon/backends/fastflowlm/fastflowlm_server.h"
 #include "lemon/backends/ryzenai/ryzenai_server.h"
@@ -1704,12 +1705,21 @@ auto Router::execute_inference(const json& request, Func&& inference_func) -> de
         try {
             auto response = inference_func(server);
 
-            if (!server->was_watchdog_triggered() && is_watchdog_reset_response(response)) {
-                server->request_backend_reset_from_watchdog("GPU Hang / compute error detected");
+            // The engine answers the request that hit a failed NPU run with its device-lost frame and
+            // then exits, because the context is dead and only a reload builds a new one. That costs
+            // the client this one request unless it is replayed on the context the reload starts;
+            // nothing has reached the client yet on this path, unlike the streaming paths.
+            const bool device_lost = backends::onebit::is_device_lost_response(response);
+            if (!server->was_watchdog_triggered()) {
+                if (is_watchdog_reset_response(response)) {
+                    server->request_backend_reset_from_watchdog("GPU Hang / compute error detected");
+                } else if (device_lost) {
+                    server->request_backend_reset_from_watchdog("NPU run did not complete (device lost, code 614)");
+                }
             }
 
             const bool watchdog_reset =
-                server->was_watchdog_triggered() || is_watchdog_reset_response(response);
+                server->was_watchdog_triggered() || is_watchdog_reset_response(response) || device_lost;
 
             if (attempt == 0 && watchdog_reset) {
                 restart_options = server->get_recipe_options();
