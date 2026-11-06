@@ -60,6 +60,13 @@ inline const BackendDescriptor descriptor = {
     /*config_extra*/    nlohmann::json::object(),
 };
 
+// An NPU model directory: the engine's NPU route runs Q4NX weights (model.q4nx, config.json,
+// tokenizer.json) with its own kernels, as the whole checkpoint repo, not one file. What it can run on
+// is a property of the checkpoint, not of the caller's `--onebit` choice: `1bit serve` refuses an NPU
+// pack on any other device ("an NPU model directory runs on --device npu"). Exposed because the
+// router's NPU-exclusivity decision needs the same answer before a server exists.
+bool is_npu_model_path(const std::string& path);
+
 }  // namespace onebit
 }  // namespace backends
 }  // namespace lemon

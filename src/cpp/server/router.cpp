@@ -300,11 +300,15 @@ static bool is_unmetered_recipe(const std::string& recipe) {
 // A backend whose exclusivity depends on the variant answers here; every other recipe keeps its
 // descriptor's policy. onebit is the case: `--onebit npu` claims the whole NPU (the array runs one
 // hardware context at a time, issue 0011) while `--onebit hrx` shares the GPU with its peers.
-static SlotPolicy slot_policy_for_load(const std::string& recipe, const RecipeOptions& options) {
+static SlotPolicy slot_policy_for_load(const std::string& recipe, const RecipeOptions& options,
+                                       const ModelInfo& model_info) {
     if (recipe == backends::onebit::descriptor.recipe) {
         const auto backend = options.get_option("onebit_backend");
-        return backends::onebit::slot_policy_for_backend_option(
-            backend.is_string() ? backend.get<std::string>() : std::string());
+        // A onebit checkpoint decides the device it can run on: an NPU model directory claims the NPU
+        // even when the caller asked for the GPU variant (the engine refuses the pairing, c28 take).
+        return backends::onebit::slot_policy_for_model(
+            backend.is_string() ? backend.get<std::string>() : std::string(),
+            backends::onebit::is_npu_model_path(model_info.resolved_path()));
     }
     return slot_policy_for_recipe(recipe);
 }
@@ -989,7 +993,7 @@ void Router::load_model(const std::string& model_name,
         //   CoexistByType (flm): coexist with other FLM types (max 1 per type),
         //                but evict exclusive-NPU peers.
         // Standard/Unmetered backends share no device exclusivity.
-        switch (slot_policy_for_load(model_info.recipe, effective_options)) {
+        switch (slot_policy_for_load(model_info.recipe, effective_options, model_info)) {
             case SlotPolicy::ExclusiveNpu: {
                 // Hardware exclusivity is stronger than count-based pools. Never
                 // alternate a router helper and its candidate across the same NPU:
