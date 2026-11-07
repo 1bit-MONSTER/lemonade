@@ -2770,6 +2770,20 @@ if(BUILD_TESTING AND EXISTS "${_ONEBIT_DEVICE_LOST_TEST_SRC}")
     add_cpp_ci_test(OnebitDeviceLostTest CI ON COMMAND test_onebit_device_lost)
 endif()
 
+# A failed /load is anonymous unless the caller is named; the c28 take could not say who sent three
+# onebit_backend=hrx loads. header-only formatting, so the test is the assertion that it names peer,
+# User-Agent and body without ever lying about a clipped one.
+if(BUILD_TESTING AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/cpp/test_load_caller.cpp")
+    add_executable(test_load_caller test/cpp/test_load_caller.cpp)
+    target_include_directories(test_load_caller PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/cpp/include
+        ${CMAKE_CURRENT_BINARY_DIR}/include
+    )
+    target_link_libraries(test_load_caller PRIVATE httplib)
+    include(CTest)
+    add_cpp_ci_test(LoadCallerTest CI ON COMMAND test_load_caller)
+endif()
+
 if(BUILD_TESTING AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/cpp/test_hrx_contract.cpp")
     add_executable(test_hrx_contract test/cpp/test_hrx_contract.cpp)
     target_link_libraries(test_hrx_contract PRIVATE lemonade-server-core)
