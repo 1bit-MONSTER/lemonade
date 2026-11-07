@@ -8,6 +8,7 @@
 #include "lemon/recipe_options.h"
 #include "lemon/router.h"
 #include "lemon/server/api_route.h"
+#include "lemon/server/load_caller.h"
 #include "lemon/server/model_loader.h"
 #include "lemon/server/shared_args.h"
 
@@ -169,6 +170,8 @@ public:
     void handle(RouteRequest& req, httplib::Response& res) override {
         auto thread_id = std::this_thread::get_id();
         LOG(DEBUG, "Server") << "===== LOAD ENDPOINT ENTERED (Thread: " << thread_id << ") =====" << std::endl;
+        // Before anything can fail, so a load that is rejected is attributable too.
+        LOG(INFO, "Server") << "Load request " << load_caller(req.http) << std::endl;
 
         ModelManager& model_manager = *ctx_.model_manager;
 
