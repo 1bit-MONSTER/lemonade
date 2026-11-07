@@ -16,6 +16,7 @@
  */
 #pragma once
 
+#include <cstdio>
 #include <sstream>
 #include <string>
 
@@ -31,15 +32,41 @@ namespace lemon {
 //
 // Bounded on purpose: a load body is a model name plus options, and a stray megabyte must not become a
 // log line. The clip marker carries the true length so a truncated body is never mistaken for a short one.
+//
+// One line, always: a body or User-Agent that carries a newline would otherwise write extra lines, and
+// the last of them can read as any other log record. That is not an attack scenario -- `curl -d @load.json`
+// with a pretty-printed body does it by accident, and the `-A` header is the client's to set. So control
+// characters are escaped, and so are the quote and the backslash, which otherwise make the escapes
+// themselves ambiguous.
+inline std::string load_field(const std::string& s, size_t max_chars) {
+    std::string escaped;
+    escaped.reserve(s.size());
+    for (unsigned char c : s) {
+        switch (c) {
+            case '\n': escaped += "\\n"; break;
+            case '\r': escaped += "\\r"; break;
+            case '\t': escaped += "\\t"; break;
+            case '"': escaped += "\\\""; break;
+            case '\\': escaped += "\\\\"; break;
+            default:
+                if (c < 0x20 || c == 0x7f) {
+                    char buf[8];
+                    std::snprintf(buf, sizeof(buf), "\\x%02x", c);
+                    escaped += buf;
+                } else {
+                    escaped += static_cast<char>(c);
+                }
+        }
+    }
+    if (escaped.size() <= max_chars) return escaped;
+    return escaped.substr(0, max_chars) + "\u2026(" + std::to_string(s.size()) + " bytes)";
+}
+
 inline std::string load_caller(const httplib::Request& http) {
-    auto clip = [](const std::string& s, size_t n) {
-        if (s.size() <= n) return s;
-        return s.substr(0, n) + "…(" + std::to_string(s.size()) + " bytes)";
-    };
     std::ostringstream out;
     out << "from " << (http.remote_addr.empty() ? std::string("?") : http.remote_addr)
-        << " ua=\"" << clip(http.get_header_value("User-Agent"), 120) << "\""
-        << " body=" << clip(http.body, 512);
+        << " ua=\"" << load_field(http.get_header_value("User-Agent"), 120) << "\""
+        << " body=" << load_field(http.body, 512);
     return out.str();
 }
 

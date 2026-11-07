@@ -84,6 +84,42 @@ int main() {
         check("a long User-Agent is clipped", line.size() < 900);
     }
 
+    {
+        // The review's forgery case, verbatim in shape: a body that is pretty-printed carries newlines,
+        // and the last line of one can read as any other record. `curl -d @load.json` does this with no
+        // ill intent at all, so the line has to survive it.
+        httplib::Request r;
+        r.remote_addr = "127.0.0.1";
+        r.set_header("User-Agent", "curl/8");
+        r.body = "{\n  \"model_name\": \"x\"\n}\n[Info] (Server) Model loaded: FORGED by the request body";
+        const std::string line = lemon::load_caller(r);
+        check("a multi-line body stays one line", line.find('\n') == std::string::npos &&
+                                                       line.find('\r') == std::string::npos);
+        check("its newlines are escaped, not dropped", has(line, "\\n  \\\"model_name\\\""));
+        check("so the forged record is inside the body field, not a line of its own",
+              has(line, "body={ ") || has(line, "body={\\n"));
+    }
+
+    {
+        // A User-Agent is the client's to set, including a quote that would close its field and let the
+        // rest read as separate fields (`ua="x" body=...`). httplib refuses a header value containing a
+        // raw newline at parse time, so a quote is the part of this that can actually reach load_caller.
+        httplib::Request r;
+        r.body = "{}";
+        r.set_header("User-Agent", "x\" body=forged");
+        const std::string line = lemon::load_caller(r);
+        check("a quote in the User-Agent cannot close its field", has(line, "ua=\"x\\\" body=forged\" body={}"));
+    }
+
+    {
+        // Backslashes are escaped too, so an escape in the output is never mistaken for a raw newline
+        // that was written by the request.
+        httplib::Request r;
+        r.body = "a\\nb";  // four characters: a, backslash, n, b
+        const std::string line = lemon::load_caller(r);
+        check("a literal backslash-n in the body is not a newline escape", has(line, "body=a\\\\nb"));
+    }
+
     if (failures == 0) {
         std::printf("\nAll load_caller tests passed\n");
         return 0;
