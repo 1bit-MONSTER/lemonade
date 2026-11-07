@@ -2770,6 +2770,19 @@ if(BUILD_TESTING AND EXISTS "${_ONEBIT_DEVICE_LOST_TEST_SRC}")
     add_cpp_ci_test(OnebitDeviceLostTest CI ON COMMAND test_onebit_device_lost)
 endif()
 
+# An NPU start can be refused while the driver frees the previous holder's partition (0011v2, ~2 s;
+# code 102). OnebitServer backs off and retries inside a 10 s budget (TOS3-C29 item 2); the schedule
+# decides how many chances that buys and when the load gives up, so it is asserted, not trusted.
+if(BUILD_TESTING AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/cpp/test_onebit_npu_load_backoff.cpp")
+    add_executable(test_onebit_npu_load_backoff test/cpp/test_onebit_npu_load_backoff.cpp)
+    target_include_directories(test_onebit_npu_load_backoff PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/cpp/include
+        ${CMAKE_CURRENT_BINARY_DIR}/include
+    )
+    include(CTest)
+    add_cpp_ci_test(OnebitNpuLoadBackoffTest CI ON COMMAND test_onebit_npu_load_backoff)
+endif()
+
 if(BUILD_TESTING AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/cpp/test_hrx_contract.cpp")
     add_executable(test_hrx_contract test/cpp/test_hrx_contract.cpp)
     target_link_libraries(test_hrx_contract PRIVATE lemonade-server-core)

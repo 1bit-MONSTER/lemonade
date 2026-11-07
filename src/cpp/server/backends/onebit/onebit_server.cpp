@@ -5,6 +5,7 @@
 #include "lemon/backends/backend_ops.h"
 #include "lemon/backends/onebit/onebit.h"
 #include "lemon/backends/onebit/onebit_slot_policy.h"
+#include "lemon/backends/onebit/npu_load_backoff.h"
 #include "lemon/utils/http_client.h"
 #include "lemon/server_process.h"
 #include "lemon/utils/process_manager.h"
@@ -20,6 +21,7 @@
 #include <memory>
 #include <sstream>
 #include <stdexcept>
+#include <thread>
 #include <utility>
 #include <string>
 #include <vector>
@@ -30,12 +32,9 @@ namespace backends {
 namespace {
 
 // An NPU model directory: the engine's NPU route runs Q4NX weights (model.q4nx, config.json,
-// tokenizer.json) with its own kernels, as the whole checkpoint repo, not one file.
-bool is_npu_model_dir(const std::string& path) {
-    std::error_code ec;
-    return !path.empty() && std::filesystem::is_directory(path, ec) &&
-           std::filesystem::exists(std::filesystem::path(path) / "model.q4nx", ec);
-}
+// tokenizer.json) with its own kernels, as the whole checkpoint repo, not one file. Published through
+// onebit::is_npu_model_path() so the router can answer it before a server exists.
+bool is_npu_model_dir(const std::string& path) { return onebit::is_npu_model_path(path); }
 
 // GGUF checkpoints are llamacpp's to manage (variant resolution, GGUF metadata, cache
 // validation); only the runtime differs. A checkpoint that names no file and holds
@@ -259,6 +258,17 @@ void OnebitServer::load(const std::string& model_name,
     // the NPU, and a build without HRX serves on the CPU.
     std::string device = options.has_option("onebit_backend") ? options.get_option("onebit_backend").get<std::string>() : "";
     if (device.empty()) device = "auto";
+    // An NPU model directory runs on the NPU and nowhere else: `1bit serve` refuses the pairing in its own
+    // words ("an NPU model directory runs on --device npu") and exits 1, which reached the caller as a 500
+    // twice after the router's evict-and-retry (c28 take 19:48:50, three passes out of three). Which device a
+    // checkpoint can run on is a property of the checkpoint, so a caller asking for another one is corrected
+    // here, with the reason in the log, instead of being handed to the engine to refuse.
+    const bool npu_pack = onebit::is_npu_model_path(model);
+    if (npu_pack && device != "npu") {
+        LOG(WARNING, "1bit") << "'" << model_name << "' is an NPU model directory; it cannot run on '" << device
+                             << "', so this load uses npu" << std::endl;
+        device = "npu";
+    }
     // The engine runs on the device the option names, so that is the device this model is
     // reported on: health's `device` field and the router's NPU checks read get_device_type(),
     // which otherwise keeps the descriptor's default (hrx => gpu) for an NPU model.
@@ -322,19 +332,42 @@ void OnebitServer::load(const std::string& model_name,
         command.args = argv;
     }
     command.port = backend_port;
-    try {
-        auto process = std::make_unique<NativeProcess>(ProcessOutput{inherit_output, true});
-        // Measured on HRX (this box): the child is reaped before the wait starts, exit-and-respawn costs
-        // 0.115 s median / 0.197 s max, and 100 evict+load cycles at 0 and 250 ms were clean (no failed
-        // load, no dead child, no router retry). 250 ms is ~2x that. The NPU keeps the platform default:
-        // its 2 s is a third of an NPU switch and the driver's teardown is not measured, so nothing here
-        // shortens a device whose risk is unknown.
-        if (device_type_ == DEVICE_GPU) {
-            process->set_cleanup_wait_ms(250);
+    // NPU: the array refuses a new hardware context for ~2 s after the previous holder exits (0011v2 frees
+    // the partition late; ctx_create answers -ENODEV, driver code 102). The router already waits for its NPU
+    // holder to be evicted (slot_policy ExclusiveNpu), so what is left is the partition itself: back off and
+    // retry inside a 10 s budget before failing the load (TOS3-C29 item 2). The port is kept across attempts:
+    // start_server() stops the failed child before it throws, so the listener is already gone.
+    onebit::NpuLoadBackoff npu_backoff;
+    const auto load_t0 = std::chrono::steady_clock::now();
+    for (int attempt = 1;; ++attempt) {
+        try {
+            auto process = std::make_unique<NativeProcess>(ProcessOutput{inherit_output, true});
+            // Measured on HRX (this box): the child is reaped before the wait starts, exit-and-respawn costs
+            // 0.115 s median / 0.197 s max, and 100 evict+load cycles at 0 and 250 ms were clean (no failed
+            // load, no dead child, no router retry). 250 ms is ~2x that. The NPU keeps the platform default:
+            // its 2 s is a third of an NPU switch and the driver's teardown is not measured, so nothing here
+            // shortens a device whose risk is unknown.
+            if (device_type_ == DEVICE_GPU) {
+                process->set_cleanup_wait_ms(250);
+            }
+            start_server(std::move(process), command);
+            break;
+        } catch (const std::runtime_error& e) {
+            const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - load_t0).count();
+            if (device_type_ != DEVICE_NPU || !onebit::npu_load_backoff_more(npu_backoff, attempt, elapsed)) {
+                if (device_type_ == DEVICE_NPU) {
+                    throw std::runtime_error("1bit serve failed to start for '" + model_name + "' (" +
+                                             command.program + "): " +
+                                             onebit::npu_load_backoff_give_up(e.what(), attempt, elapsed));
+                }
+                throw std::runtime_error("1bit serve failed to start for '" + model_name + "' (" +
+                                         command.program + "): " + e.what());
+            }
+            const double delay = onebit::npu_load_backoff_delay(npu_backoff, attempt + 1);
+            LOG(WARNING, "1bit") << "NPU start attempt " << attempt << " failed after " << int(elapsed * 1000)
+                                  << " ms: " << e.what() << "; retrying in " << int(delay * 1000) << " ms" << std::endl;
+            std::this_thread::sleep_for(std::chrono::milliseconds(int(delay * 1000)));
         }
-        start_server(std::move(process), command);
-    } catch (const std::runtime_error& e) {
-        throw std::runtime_error("1bit serve failed to start for '" + model_name + "' (" + command.program + "): " + e.what());
     }
     // before load() returns, so Lemonade marks the model loaded only after it
     if (plan.kind == BackendPlan::Kind::Direct) {
@@ -345,6 +378,12 @@ void OnebitServer::load(const std::string& model_name,
 }
 
 namespace onebit {
+
+bool is_npu_model_path(const std::string& path) {
+    std::error_code ec;
+    return !path.empty() && std::filesystem::is_directory(path, ec) &&
+           std::filesystem::exists(std::filesystem::path(path) / "model.q4nx", ec);
+}
 
 std::string resolve_binary() { return engine_binary(); }
 

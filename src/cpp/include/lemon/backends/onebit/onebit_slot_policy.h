@@ -37,6 +37,15 @@ inline SlotPolicy slot_policy_for_backend_option(const std::string& onebit_backe
     return onebit_backend == "npu" ? SlotPolicy::ExclusiveNpu : SlotPolicy::Standard;
 }
 
+// The same question for a load that has a checkpoint in hand: an NPU model directory runs on the NPU
+// whatever `--onebit` says (the engine refuses the pairing otherwise), so it claims the NPU too. Without
+// this, a load asked for with `--onebit hrx` on an .q4nx pack would start a second NPU context beside a
+// resident one — the wedge issue 0011 is about — and then fail anyway.
+inline SlotPolicy slot_policy_for_model(const std::string& onebit_backend, bool npu_model_path) {
+    if (npu_model_path) return SlotPolicy::ExclusiveNpu;
+    return slot_policy_for_backend_option(onebit_backend);
+}
+
 }  // namespace onebit
 }  // namespace backends
 }  // namespace lemon
