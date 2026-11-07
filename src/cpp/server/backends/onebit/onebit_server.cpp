@@ -337,6 +337,17 @@ void OnebitServer::load(const std::string& model_name,
     // holder to be evicted (slot_policy ExclusiveNpu), so what is left is the partition itself: back off and
     // retry inside a 10 s budget before failing the load (TOS3-C29 item 2). The port is kept across attempts:
     // start_server() stops the failed child before it throws, so the listener is already gone.
+    //
+    // Every start failure is retried, and two costs come with that, named here because a reader would
+    // otherwise find them the hard way:
+    //   * start_server() throws a fixed "<backend> failed to start": the child's reason (a refusal, a
+    //     missing kernel directory, a broken config) is in the log above and never in the exception, so
+    //     this loop cannot tell a refusal from a fault. A genuinely broken load therefore now costs the
+    //     full budget before reporting the same error it used to report in ~100 ms.
+    //   * the delays run inside Router::load_model, which holds load_mutex_ across the backend load. That
+    //     mutex gates every request's model lookup and the metrics/slots readers, so a load backing off for
+    //     10 s adds up to 10 s of entry latency to concurrent requests. That is the trade this PR makes on
+    //     purpose: a queued request beats the 500 the c29 take returned on the model switch.
     onebit::NpuLoadBackoff npu_backoff;
     const auto load_t0 = std::chrono::steady_clock::now();
     for (int attempt = 1;; ++attempt) {

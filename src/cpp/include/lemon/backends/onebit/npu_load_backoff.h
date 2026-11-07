@@ -33,6 +33,13 @@ namespace onebit {
 // The engine queues a refusal internally (`1bit serve --load-queue-ms`); this is the same patience held
 // on the side that decides to start the child at all, so a payload whose engine predates that queue,
 // or a refusal the engine reports instead of absorbing, still ends in a load instead of a 500.
+//
+// What this side CANNOT do is tell a refusal from a broken load. `WrappedServer::start_server()` throws
+// a fixed "<backend> failed to start" -- the child's own reason ("code 102", "No such device", a missing
+// kernel directory) is printed to the log and never reaches the exception -- so a caller here has no text
+// to classify, and this PR retries every start failure rather than pretending to filter. The costs that
+// buys are named at the loop in onebit_server.cpp; making a text predicate possible means carrying the
+// child's last lines out of ServerProcess, which is its own change.
 struct NpuLoadBackoff {
     // The c29 board evidence (TOS3-C29 item 2): the release check reads code 102 for ~2 s after the
     // holder exits. 10 s is the budget the release cycle asked for — long enough for the partition,
@@ -51,21 +58,17 @@ inline double npu_load_backoff_delay(const NpuLoadBackoff& p, int attempt) {
 }
 
 // Whether another attempt fits in the budget after `attempts` failures that took `elapsed_s` so far.
+// It bounds the DELAYS: an attempt is itself bounded by start_server's own ready-wait (600 s), so a load
+// whose child takes seconds to fail can run past this window. The give-up line says "of delays" for that
+// reason, and a reader should not read `window_s` as a hard bound on the load.
 inline bool npu_load_backoff_more(const NpuLoadBackoff& p, int attempts, double elapsed_s) {
     return elapsed_s + npu_load_backoff_delay(p, attempts + 1) <= p.window_s;
 }
 
-// Only a start failure can be a refusal: once the child is up, a later failure is the model's, not the
-// array's. Kept as a named predicate so the caller cannot retry a genuinely broken load by accident.
-inline bool npu_start_failure_is_retryable(const std::string& reason) {
-    (void)reason;
-    return true;
-}
-
 // What the operator reads when the budget ran out: name the refusal, the wait, and what fixes it.
 inline std::string npu_load_backoff_give_up(const std::string& detail, int attempts, double elapsed_s) {
-    return "the NPU refused the backend " + std::to_string(attempts) + " time(s) over " +
-           std::to_string(int(elapsed_s * 1000)) + " ms (last: " + detail +
+    return "the NPU did not start the backend in " + std::to_string(attempts) + " attempt(s) over " +
+           std::to_string(int(elapsed_s * 1000)) + " ms of delays (last: " + detail +
            "); another client may still be releasing the array, or the driver needs a reload "
            "(modprobe -r amdxdna && modprobe amdxdna)";
 }

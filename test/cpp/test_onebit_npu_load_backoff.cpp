@@ -82,10 +82,29 @@ int main() {
     check("the attempts it gets still fit the budget",
           elapsed + npu_load_backoff_delay(p, attempts + 1) <= p.window_s + 1e-9);
 
+    // What the budget does NOT bound, asserted so nobody reads window_s as a hard cap: an attempt that is
+    // itself slow (start_server waits for the child's /health) can push the load past 10 s. Six attempts of
+    // 3 s each end at 18 s and the loop stops there, i.e. one slow attempt is never retried past the window.
+    {
+        int attempts = 0;
+        double elapsed = 0.0;
+        while (npu_load_backoff_more(p, attempts + 1, elapsed) && attempts < 100) {
+            ++attempts;
+            elapsed += 4.0;  // a child that takes 4 s to fail
+        }
+        check("a slow-failing child is retried fewer times (4 s each: 1..3 attempts)",
+              attempts >= 1 && attempts <= 3);
+        check("and the load can end past window_s, because the budget bounds delays not attempts",
+              attempts >= 1 && elapsed > p.window_s);
+        check("the loop always terminates", attempts < 100);
+    }
+
     // The give-up line is the only thing an operator sees when the array is genuinely dead.
     const std::string why = npu_load_backoff_give_up("serve exited before it was ready", 6, 10.0);
     check("the give-up line names the attempts and the elapsed time",
-          why.find("6 time(s)") != std::string::npos && why.find("10000 ms") != std::string::npos);
+          why.find("6 attempt(s)") != std::string::npos && why.find("10000 ms") != std::string::npos);
+    check("the give-up line says the time was delays, not a hard bound",
+          why.find("of delays") != std::string::npos);
     check("the give-up line keeps the underlying reason",
           why.find("serve exited before it was ready") != std::string::npos);
     check("the give-up line says what fixes a dead array",
