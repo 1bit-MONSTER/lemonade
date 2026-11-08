@@ -31,6 +31,8 @@ using lemon::backends::onebit::NpuLoadBackoff;
 using lemon::backends::onebit::npu_load_backoff_delay;
 using lemon::backends::onebit::npu_load_backoff_give_up;
 using lemon::backends::onebit::npu_load_backoff_more;
+using lemon::backends::onebit::npu_start_action;
+using lemon::backends::onebit::NpuStartAction;
 
 namespace {
 
@@ -98,6 +100,24 @@ int main() {
               attempts >= 1 && elapsed > p.window_s);
         check("the loop always terminates", attempts < 100);
     }
+
+    // The loop's decision as a pure function, because the cancellation path is the one that cannot be seen
+    // without one: start_server() throws the same fixed "failed to start" for a cancelled load as for a refused
+    // one, so the loop must ask the flag first or it respawns a child every 0.25-2 s after being told to stop.
+    check("a cancelled load rethrows even with the whole budget left",
+          npu_start_action(/*cancelled=*/true, /*npu=*/true, p, 1, 0.0) == NpuStartAction::RethrowCancelled);
+    check("a cancelled load rethrows after failures too",
+          npu_start_action(true, true, p, 4, 3.0) == NpuStartAction::RethrowCancelled);
+    check("a cancelled load rethrows on a non-NPU backend as well",
+          npu_start_action(true, false, p, 1, 0.0) == NpuStartAction::RethrowCancelled);
+    check("an NPU refusal inside the budget retries",
+          npu_start_action(false, true, p, 2, 0.5) == NpuStartAction::Retry);
+    check("an NPU refusal past the budget fails",
+          npu_start_action(false, true, p, 6, 9.9) == NpuStartAction::Fail);
+    check("a GPU start failure is not retried at all",
+          npu_start_action(false, false, p, 1, 0.0) == NpuStartAction::Fail);
+    check("a GPU start failure is not retried after attempts either",
+          npu_start_action(false, false, p, 5, 2.0) == NpuStartAction::Fail);
 
     // The give-up line is the only thing an operator sees when the array is genuinely dead.
     const std::string why = npu_load_backoff_give_up("serve exited before it was ready", 6, 10.0);

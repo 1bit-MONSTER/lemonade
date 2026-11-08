@@ -365,7 +365,12 @@ void OnebitServer::load(const std::string& model_name,
             break;
         } catch (const std::runtime_error& e) {
             const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - load_t0).count();
-            if (device_type_ != DEVICE_NPU || !onebit::npu_load_backoff_more(npu_backoff, attempt, elapsed)) {
+            // A cancelled load rethrows untouched (not an NPU refusal -- see NpuStartAction), everything else
+            // either fails or waits out the partition as before.
+            const auto action = onebit::npu_start_action(load_cancelled(), device_type_ == DEVICE_NPU, npu_backoff,
+                                                         attempt, elapsed);
+            if (action == onebit::NpuStartAction::RethrowCancelled) throw;
+            if (action == onebit::NpuStartAction::Fail) {
                 if (device_type_ == DEVICE_NPU) {
                     throw std::runtime_error("1bit serve failed to start for '" + model_name + "' (" +
                                              command.program + "): " +

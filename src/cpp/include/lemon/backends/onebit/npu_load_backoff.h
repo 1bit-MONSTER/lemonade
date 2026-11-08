@@ -65,6 +65,20 @@ inline bool npu_load_backoff_more(const NpuLoadBackoff& p, int attempts, double 
     return elapsed_s + npu_load_backoff_delay(p, attempts + 1) <= p.window_s;
 }
 
+// What the loop does with one start failure. A cancelled load rethrows untouched: wait_for_ready() answers
+// false on the cancel flag and start_server() throws its fixed "failed to start", so without this a cancel
+// would be indistinguishable from an NPU refusal and would respawn a child every 0.25-2 s until the budget
+// ran out. Named and pure so it can be asserted without a device (test_onebit_npu_load_backoff), and it is
+// the same first check vllm/onnxruntime/fastflowlm make in their own catch blocks.
+enum class NpuStartAction { RethrowCancelled, Fail, Retry };
+
+inline NpuStartAction npu_start_action(bool cancelled, bool npu, const NpuLoadBackoff& p, int attempts,
+                                       double elapsed_s) {
+    if (cancelled) return NpuStartAction::RethrowCancelled;
+    if (!npu) return NpuStartAction::Fail;
+    return npu_load_backoff_more(p, attempts, elapsed_s) ? NpuStartAction::Retry : NpuStartAction::Fail;
+}
+
 // What the operator reads when the budget ran out: name the refusal, the wait, and what fixes it.
 inline std::string npu_load_backoff_give_up(const std::string& detail, int attempts, double elapsed_s) {
     return "the NPU did not start the backend in " + std::to_string(attempts) + " attempt(s) over " +
