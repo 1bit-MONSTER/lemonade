@@ -3869,6 +3869,13 @@ if(BUILD_TESTING AND EXISTS "${_PIP_DL_PARSER_TEST_SRC}")
     add_cpp_ci_test(PipDownloadParserTest CI ON COMMAND test_pip_download_parser)
 endif()
 
+set(_MODEL_SIZE_UNITS_TEST_SRC "${CMAKE_CURRENT_SOURCE_DIR}/test/cpp/test_model_size_units.cpp")
+if(BUILD_TESTING AND EXISTS "${_MODEL_SIZE_UNITS_TEST_SRC}")
+    add_executable(test_model_size_units test/cpp/test_model_size_units.cpp)
+    target_link_libraries(test_model_size_units PRIVATE lemonade-server-core)
+    add_cpp_ci_test(ModelSizeUnitsTest CI ON COMMAND test_model_size_units)
+endif()
+
 set(_GFX_ARCH_GATING_TEST_SRC "${CMAKE_CURRENT_SOURCE_DIR}/test/cpp/test_gfx_arch_gating.cpp")
 if(BUILD_TESTING AND EXISTS "${_GFX_ARCH_GATING_TEST_SRC}")
     add_executable(test_gfx_arch_gating test/cpp/test_gfx_arch_gating.cpp)

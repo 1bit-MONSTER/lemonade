@@ -1,4 +1,5 @@
 #include "lemon/router.h"
+#include "lemon/model_size.h"
 #include "lemon/cloud_provider_registry.h"
 #include "lemon/backends/backend_ops.h"
 #include "lemon/backends/backend_registry.h"
@@ -1132,9 +1133,11 @@ void Router::load_model(const std::string& model_name,
         // all (get_available_memory_gb() == 0, e.g. some Windows NPU/iGPU
         // systems), so gate on known-low memory to avoid rejecting large models
         // on high-memory machines where the driver overhead would fit fine.
+        // The 10 here is a size in the `size` field's own unit - decimal GB (lemon/model_size.h),
+        // i.e. 1e10 bytes, not 10*2^30. Named so the threshold cannot be read as either by accident.
         if (auto_ctx == AUTO_CTX_FALLBACK
             && (model_info.device & DEVICE_NPU)
-            && model_info.size > 10.0
+            && model_info.size > lemon::units::kNpuModelTooLargeGigabytes
             && get_available_memory_gb(model_info.device) > 0) {
             throw std::runtime_error(
                 "Not enough memory to load " + canonical_model_name
