@@ -1,6 +1,7 @@
 #include <lemon/utils/aixlog.hpp>
 
 #include "lemon/model_manager.h"
+#include "lemon/model_size.h"
 #include "lemon/server/api_route.h"
 #include "lemon/server/gateway_conversion.h"
 
@@ -62,8 +63,9 @@ public:
             response["models"] = json::array();
 
             for (const auto& [id, info] : models) {
-                // info.size is in GB (2^30 bytes).
-                int64_t size_bytes = static_cast<int64_t>(info.size * 1073741824.0);
+                // info.size is decimal gigabytes (1e9 bytes) - see lemon/model_size.h. It used to be
+                // read as 2^30, which reported every tool-written row 7.4 % too large (engine#1381).
+                int64_t size_bytes = lemon::units::gigabyte_to_bytes(info.size);
                 response["models"].push_back({
                     {"name", id + ":latest"},
                     {"model", id + ":latest"},

@@ -1,4 +1,5 @@
 #include <lemon/models/artifact_ref.h>
+#include <lemon/model_size.h>
 #include <lemon/models/artifact_store.h>
 
 #include <lemon/backends/backend_ops.h>
@@ -1196,7 +1197,10 @@ void ModelArtifactStore::refresh_on_disk_size(ModelInfo& info) {
     if (total_size == 0) {
         return;
     }
-    double file_size_gb = static_cast<double>(total_size) / (1024.0 * 1024.0 * 1024.0);
+    // Decimal gigabytes - the unit server_models.json's `size` is written in (lemon/model_size.h).
+    // This divided by 1024^3, so the same file was rounded to a different number than the writer
+    // stored (engine#1381).
+    double file_size_gb = lemon::units::bytes_to_gigabyte(total_size);
     if (file_size_gb < 1.0) {
         info.size = std::round(file_size_gb * 1000) / 1000;
     } else if (file_size_gb < 10.0) {

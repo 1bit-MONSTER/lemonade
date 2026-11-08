@@ -1,4 +1,5 @@
 #include <lemon/canonical_id.h>
+#include "lemon/model_size.h"
 #include <lemon/models/registry_types.h>
 #include <lemon/model_types.h>
 #include <lemon/models/host_availability.h>
@@ -116,7 +117,10 @@ FilterResult filter_hardware(const std::map<std::string, ModelInfo>& models,
                 // cannot address system RAM and the iGPU carveout as one pool,
                 // so its ceiling is the larger pool.
                 const double working_set = streaming_working_set_gb(info.min_resident_gb, info.size);
-                if (streaming_model_exceeds_pool(working_set, availability.largest_mem_pool_gb)) {
+                // `size`/`min_resident_gb` are decimal GB; the pool figure is 1024^3-based
+                // (system_info.cpp). Compare in the pool's unit (engine#1381 review).
+                if (streaming_model_exceeds_pool(lemon::units::gigabyte_to_gibibyte(working_set),
+                                                 availability.largest_mem_pool_gb)) {
                     filter_out = true;
                     cause = RejectCause::MemoryFit;
                     size_filtered_recipes.insert(recipe);
@@ -124,19 +128,25 @@ FilterResult filter_hardware(const std::map<std::string, ModelInfo>& models,
                     oss << std::fixed << std::setprecision(1);
                     oss << "This model streams from disk but needs about " << working_set
                         << " GB resident in GPU memory, and this device's largest memory "
-                        << "pool is only " << availability.largest_mem_pool_gb << " GB.";
+                        << "pool is only "
+                        << lemon::units::gibibyte_to_gigabyte(availability.largest_mem_pool_gb)
+                        << " GB.";
                     filter_reason = oss.str();
                 }
-            } else if (availability.system_ram_gb > 0.0 && info.size > max_model_size_gb) {
+            } else if (availability.system_ram_gb > 0.0
+                       && lemon::units::gigabyte_to_gibibyte(info.size) > max_model_size_gb) {
                 // Non-streaming: the whole model must fit (80% of system RAM).
                 filter_out = true;
                 cause = RejectCause::MemoryFit;
                 size_filtered_recipes.insert(recipe);
                 std::ostringstream oss;
                 oss << std::fixed << std::setprecision(1);
+                // Printed in the unit `size` uses, so the three numbers in one sentence agree.
                 oss << "This model requires approximately " << info.size << " GB of memory, "
-                    << "but your system only has " << availability.system_ram_gb << " GB of RAM. "
-                    << "Models larger than " << max_model_size_gb
+                    << "but your system only has "
+                    << lemon::units::gibibyte_to_gigabyte(availability.system_ram_gb) << " GB of RAM. "
+                    << "Models larger than "
+                    << lemon::units::gibibyte_to_gigabyte(max_model_size_gb)
                     << " GB (80% of system RAM) are filtered out.";
                 filter_reason = oss.str();
             }
