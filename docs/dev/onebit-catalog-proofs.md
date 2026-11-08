@@ -17,8 +17,8 @@ limitations under the License.
 # The onebit catalog, entry by entry
 
 `src/cpp/resources/server_models.json` carries 27 `onebit` entries: **22 proven on the HRX route** (the rows
-below, one per catalog entry), **1 added and not proven yet** (flint-40b-a2.5b — its proof run was refused
-for memory on a full box, which is a transient condition and not a code one: see the note below), and 4 NPU
+below, one per catalog entry), **1 added and not proven yet** (flint-40b-a2.5b — it loads and then its
+logits are all NaN, so the row has one named blocker in the engine: #1539, see the note below), and 4 NPU
 model directories (a separate route, added in #20). This page records how each HRX
 entry was proven on Strix Halo, so a reader can tell an entry that runs from one that was only added.
 
