@@ -66,7 +66,7 @@ re-measured rows).
 | Qwen3-Coder-30B-A3B-Instruct-1bit | 12.4 s | 200: The capital of France is Paris. | **84.6 tok/s** (min 83.6, max 85.2), TTFT 102 ms, 27/20 tok, failed 0/3 | 23 Oct, engine f37f51c |
 | Qwen3.8-27B-1bit | 12.3 s | 200: Paris is the capital of France. | **26.1 tok/s** (min 26.0, max 26.1), TTFT 807 ms, 67/20 tok, failed 0/3 | 23 Oct, engine f37f51c |
 | gpt-oss-20b-mxfp4-1bit | 5.7 s | 200: Paris is | **72.3 tok/s** (min 65.8, max 76.6), TTFT 238 ms, 88/20 tok, failed 0/3 | 22 Oct, engine 4b645cb |
-| flint-40b-a2.5b | *refused: does not fit* | *pending* | *pending* | **not proven yet** — the architecture is fine; the box was full (see the note below) |
+| flint-40b-a2.5b | **200 in 21.2 s** (strict placement) | *500: all-NaN logits* | *pending* | **loads and then fails in the sampler** — engine #1539 (see the note below) |
 
 ## Notes on individual rows
 
@@ -78,8 +78,8 @@ re-measured rows).
   add Flint (FlintForCausalLM), ported from upstream #30928") and is present at every llama.cpp sha the
   shipping engine bundles report.
 
-  What stops it now is memory, not code. The proof run on 2026-11-08 (engine `rc-2026-11-05-c25`, the
-  standard protocol above, one `gpu-hold` claim) was refused by the engine's own planner in 223 ms:
+  **Then memory, and now neither.** On 2026-11-08 01:01 (engine `rc-2026-11-05-c25`, the standard protocol
+  above, one `gpu-hold` claim) the engine's own planner refused the load in 223 ms:
 
   ```
   1bit serve: flint-UD-Q4_K_XL does not fit: need 24.07 GiB (flint-UD-Q4_K_XL.gguf: weights 23.33 + KV/state
@@ -108,8 +108,21 @@ re-measured rows).
   therefore **`--ctx-size 8192` with >= 24 GiB free**, where the windowed estimate and the real need are close;
   a run at the model's own context needs its own figure, not this one.
 
-  The hold itself was clean — 0 GPU fault lines, 0 leftover backends — which is recorded here so it is not
-  mistaken for evidence about flint. Its cells stay *pending* until a run gets past the load.
+  That refusal was the box, not flint: the next attempt, on a quiet box (**MemAvailable 66 GiB**, load 6.16, tctl
+  73 °C), **loaded the model in 21.2 s with strict placement** and got as far as decoding — and then every one of
+  the 150 144 logits came back **NaN**, so llama.cpp's HRX guardrail aborted the server before it could sample:
+
+  ```
+  common/sampling.cpp:620: HRX: NaN logits (engine#123)
+  E common_sampler_sample: HRX returned NaN logits: count=150144 of 150144, ... contiguous=yes, continuing=no
+  ```
+
+  `llama-server` exits **134** and the request answers 500; the router's retries aborted identically (4/4), so it is
+  deterministic, not a race. The hold was clean around it — **0** amdgpu fault lines, 0 leftover backends — and the
+  frame is the first decode, not the load, which rules out placement and the graph. That is engine
+  **[#1539](https://github.com/1bit-MONSTER/engine/issues/1539)**: the arch and the load are fine, the
+  kernel/op path for this architecture is not, so the row cannot be proven until that is fixed. Its cells stay
+  *pending* for that reason, which is the only reason left.
 
   **Sampling** the model recommends, and what the GGUF's own `general.sampling.*` metadata already
   carries: **temp 1.0, top-p 0.95, top-k 20**. It is a reasoning model — it emits `<think> … </think>`
