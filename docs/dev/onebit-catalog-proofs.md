@@ -87,12 +87,29 @@ re-measured rows).
   MemAvailable 6.0 GiB); GTT after this load would reach 115.0 GiB of the 104.0 GiB ceiling ...
   ```
 
-  Two things in that line are worth keeping: the planner read the model's own 256 K context and sized it
-  (so the architecture is understood, not rejected), and the refusal is **transient** — four foreign HRX
-  clients were resident and the box was at load 46.6, leaving 6.0 GiB of 122 GiB. flint needs **24.07 GiB**
-  at minimum, weights alone 23.33 GiB, so its proof needs an idle box rather than a different build; the
-  0-fault, 0-leftover hold it ran in is recorded but proves nothing about flint itself. Re-run it when
-  >= 24 GiB is free and the row gets its cells.
+  What that line does and does not show. It does **not** show the architecture is understood: the admission
+  check is architecture-generic (`app/mem_admit.h`, `model_need()`), reading `context_length`, `block_count`,
+  `attention.head_count_kv` and `attention.sliding_window` out of any GGUF header without ever asking
+  llama.cpp whether it can build the arch — an unknown arch gets a sized KV and the same 223 ms "does not fit".
+  The arch being supported rests on the fork evidence above, not on this line. What the line does show is that
+  the refusal is **transient**: four foreign HRX clients were resident and the box was at load 46.6, leaving
+  6.0 GiB of 122 GiB, against flint's **24.07 GiB** minimum (weights alone 23.33 GiB).
+
+  **And 24.07 GiB is a lower bound, so the re-run condition has to pin the context.** `model_need()` takes the
+  share of layers that attend over the *full* context from a per-arch list (`gpt-oss`, `gemma2` and `gemma3` at
+  one in 2, 5 or 6 layers) or from an `attention.sliding_window_pattern` array in the file; "an architecture
+  not listed counts every layer as windowed (the estimate stays a lower bound)", `flint` is not on that list, so
+  unless its GGUF carries an `attention.sliding_window_pattern` array every one of its 49 layers is priced at the
+  window. flint's 14 full-attention layers are then not priced at
+  the model's own 262144 context, which is why the same 24.07 GiB comes back at ctx 4096, 8192 and 262144 alike.
+  Priced properly those 14 layers add roughly `0.24 GiB × 14/49 × 262144/(window+512)` — about 3.9 GiB for a
+  4096-token window — so on a box with 24-28 GiB free the planner can **admit** flint at its own context and the
+  load then overruns the GTT ceiling (the engine #680 shape the refusal line cites). The honest re-run is
+  therefore **`--ctx-size 8192` with >= 24 GiB free**, where the windowed estimate and the real need are close;
+  a run at the model's own context needs its own figure, not this one.
+
+  The hold itself was clean — 0 GPU fault lines, 0 leftover backends — which is recorded here so it is not
+  mistaken for evidence about flint. Its cells stay *pending* until a run gets past the load.
 
   **Sampling** the model recommends, and what the GGUF's own `general.sampling.*` metadata already
   carries: **temp 1.0, top-p 0.95, top-k 20**. It is a reasoning model — it emits `<think> … </think>`
