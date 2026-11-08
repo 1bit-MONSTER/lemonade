@@ -30,6 +30,7 @@
 using lemon::SlotPolicy;
 using lemon::backends::onebit::descriptor;
 using lemon::backends::onebit::slot_policy_for_backend_option;
+using lemon::backends::onebit::slot_policy_for_model;
 
 namespace {
 
@@ -53,6 +54,21 @@ int main() {
           slot_policy_for_backend_option("") == SlotPolicy::Standard);
     check("an unknown value does not claim the NPU",
           slot_policy_for_backend_option("cuda") == SlotPolicy::Standard);
+
+    // A checkpoint decides what it can run on: an NPU model directory claims the NPU even when the caller
+    // asked for the GPU variant, because `1bit serve` refuses the pairing (c28 take: `onebit_backend=hrx` on
+    // an .q4nx pack -> 500, three passes out of three). Without this the router would also start a second
+    // NPU context beside a resident one, which is the wedge issue 0011 is about.
+    check("an NPU pack claims the NPU even when hrx was asked for",
+          slot_policy_for_model("hrx", true) == SlotPolicy::ExclusiveNpu);
+    check("an NPU pack claims the NPU when nothing was asked for",
+          slot_policy_for_model("", true) == SlotPolicy::ExclusiveNpu);
+    check("an NPU pack asked for as npu is unchanged",
+          slot_policy_for_model("npu", true) == SlotPolicy::ExclusiveNpu);
+    check("a GGUF checkpoint keeps sharing the GPU when hrx was asked for",
+          slot_policy_for_model("hrx", false) == SlotPolicy::Standard);
+    check("a GGUF checkpoint asked for as npu claims the NPU",
+          slot_policy_for_model("npu", false) == SlotPolicy::ExclusiveNpu);
 
     // The recipe-level policy stays Standard on purpose: the descriptor is shared by both variants,
     // so claiming the NPU there would evict NPU models on every HRX load.
