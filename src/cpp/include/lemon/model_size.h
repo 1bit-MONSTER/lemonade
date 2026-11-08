@@ -37,9 +37,9 @@ inline constexpr double kBytesPerGigabyte = 1e9;
 // readers do *not* apply it (10.0 in the field is 1e10 bytes, never 1.0737e10).
 inline constexpr double kBytesPerGibibyte = 1073741824.0;
 
-// `size` (decimal GB) -> bytes, as an integer count. Saturates rather than
-// overflowing: the negative guard is for a caller that round-trips a computed
-// value through a signed type.
+// `size` (decimal GB) -> bytes, as an integer count. A non-positive size is 0
+// bytes (no magnitude, and no negative cast); there is no upper clamp, so a
+// caller feeding an absurd size gets an absurd count rather than a wrapped one.
 inline int64_t gigabyte_to_bytes(double gigabytes) {
     if (!(gigabytes > 0.0)) {
         return 0;
@@ -51,6 +51,21 @@ inline int64_t gigabyte_to_bytes(double gigabytes) {
 // display it choose their own precision, as artifact_store does.
 inline double bytes_to_gigabyte(uint64_t bytes) {
     return static_cast<double>(bytes) / kBytesPerGigabyte;
+}
+
+// The system-info figures this field is compared against - the device memory pool
+// (system_info.cpp: pool_size / 1024^3) and system RAM (mem_bytes / 1024^3) - are
+// **binary** gigabytes, so a `size` must be converted before it meets one of them.
+// Comparing the raw field against those numbers measured every catalog row 7.4 %
+// too large and filtered models out that fit (engine#1381 review, store_builder's
+// memory-fit filter). Both directions are named so a caller never multiplies by a
+// bare 1024 somewhere.
+inline double gigabyte_to_gibibyte(double gigabytes) {
+    return gigabytes * kBytesPerGigabyte / kBytesPerGibibyte;
+}
+
+inline double gibibyte_to_gigabyte(double gibibytes) {
+    return gibibytes * kBytesPerGibibyte / kBytesPerGigabyte;
 }
 
 // router.cpp's NPU guard: a model larger than this, in the field's unit, is

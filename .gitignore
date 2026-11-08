@@ -190,4 +190,3 @@ CLAUDE.local.md
 # WiX Toolset build artifacts
 *.msi
 *.wixpdb
-build-1381/

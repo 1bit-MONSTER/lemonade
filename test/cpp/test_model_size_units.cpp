@@ -63,6 +63,16 @@ int main() {
     check(9.9 <= kNpuModelTooLargeGigabytes && 10.1 > kNpuModelTooLargeGigabytes,
           "a 9.9 GB model is below the guard and a 10.1 GB model is above it");
 
+    // 4b. The memory-fit filter (store_builder.cpp) compares a `size` against figures that come from
+    //     system_info.cpp's `bytes / 1024^3`, i.e. binary gigabytes. The reviewer's borderline case: a
+    //     128 GiB box with the 0.8 RAM rule has max_model_size_gb = 102.4, and a 105 GB model fits
+    //     (105 GB = 97.8 GiB). The old code compared 105 > 102.4 and filtered it out.
+    check(std::fabs(gigabyte_to_gibibyte(105.0) - 97.789) < 0.001, "105 GB is 97.79 GiB");
+    check(gigabyte_to_gibibyte(105.0) < 102.4, "a 105 GB model fits a 102.4 (GiB-numbered) budget");
+    check(105.0 > 102.4, "...and the raw comparison the filter used to make rejects it");
+    check(std::fabs(gibibyte_to_gigabyte(102.4) - 109.951) < 0.001,
+          "the same budget is 109.95 GB, which is what the refusal message now prints");
+
     // 5. Degenerate input: a negative or zero size is no bytes, never a wrapped int64.
     check(gigabyte_to_bytes(-1.0) == 0, "a negative size converts to 0 bytes, not a wrapped value");
     check(gigabyte_to_bytes(0.0) == 0, "a zero size converts to 0 bytes");
