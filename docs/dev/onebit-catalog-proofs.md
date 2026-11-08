@@ -17,8 +17,9 @@ limitations under the License.
 # The onebit catalog, entry by entry
 
 `src/cpp/resources/server_models.json` carries 27 `onebit` entries: **22 proven on the HRX route** (the rows
-below, one per catalog entry), **1 added and awaiting its proof** (flint-40b-a2.5b, see the row marked
-*pending*), and 4 NPU model directories (a separate route, added in #20). This page records how each HRX
+below, one per catalog entry), **1 added and not proven yet** (flint-40b-a2.5b — its proof run was refused
+for memory on a full box, which is a transient condition and not a code one: see the note below), and 4 NPU
+model directories (a separate route, added in #20). This page records how each HRX
 entry was proven on Strix Halo, so a reader can tell an entry that runs from one that was only added.
 
 ## What "proven" means here
@@ -65,18 +66,50 @@ re-measured rows).
 | Qwen3-Coder-30B-A3B-Instruct-1bit | 12.4 s | 200: The capital of France is Paris. | **84.6 tok/s** (min 83.6, max 85.2), TTFT 102 ms, 27/20 tok, failed 0/3 | 23 Oct, engine f37f51c |
 | Qwen3.8-27B-1bit | 12.3 s | 200: Paris is the capital of France. | **26.1 tok/s** (min 26.0, max 26.1), TTFT 807 ms, 67/20 tok, failed 0/3 | 23 Oct, engine f37f51c |
 | gpt-oss-20b-mxfp4-1bit | 5.7 s | 200: Paris is | **72.3 tok/s** (min 65.8, max 76.6), TTFT 238 ms, 88/20 tok, failed 0/3 | 22 Oct, engine 4b645cb |
-| flint-40b-a2.5b | *pending* | *pending* | *pending* | **added, not proven yet** — see the note below |
+| flint-40b-a2.5b | *refused: does not fit* | *pending* | *pending* | **not proven yet** — the architecture is fine; the box was full (see the note below) |
 
 ## Notes on individual rows
 
 - **flint-40b-a2.5b** is the newest entry and the one row above that is **not proven yet**.
   `unsloth/flint-GGUF:flint-UD-Q4_K_XL.gguf` (25.05 GB, 39.8 B total / ~2.5 B active, 256 routed experts
   top-6 plus a shared expert, 49 layers, hybrid 35 sliding-window / 14 full attention) is a new
-  architecture: the `flint` arch lands in our llama.cpp fork with #134 (upstream ggml-org/llama.cpp
-  #30928). Until an engine build carries that pin, `lemonade load flint-40b-a2.5b --onebit hrx` fails on
-  an unknown architecture, so the load/request/bench cells say *pending* rather than carrying numbers
-  from another build. The proof run itself is the standard protocol above (one `gpu-hold` claim, strict
-  placement, `chat-short` bench 3 runs), queued behind the leaderboard's lane.
+  architecture, and the row's earlier reason for being pending — that no engine build carried the `flint`
+  arch — **is no longer true**: the arch landed in our llama.cpp fork on 2026-10-23 (`c3eef46c0`, "models:
+  add Flint (FlintForCausalLM), ported from upstream #30928") and is present at every llama.cpp sha the
+  shipping engine bundles report.
+
+  What stops it now is memory, not code. The proof run on 2026-11-08 (engine `rc-2026-11-05-c25`, the
+  standard protocol above, one `gpu-hold` claim) was refused by the engine's own planner in 223 ms:
+
+  ```
+  1bit serve: flint-UD-Q4_K_XL does not fit: need 24.07 GiB (flint-UD-Q4_K_XL.gguf: weights 23.33 + KV/state
+  0.24 + compute 0.50) at the model's own ctx 262144, free 6.03 GiB (GTT 29.1 of 120.0 GiB free,
+  MemAvailable 6.0 GiB); GTT after this load would reach 115.0 GiB of the 104.0 GiB ceiling ...
+  ```
+
+  What that line does and does not show. It does **not** show the architecture is understood: the admission
+  check is architecture-generic (`app/mem_admit.h`, `model_need()`), reading `context_length`, `block_count`,
+  `attention.head_count_kv` and `attention.sliding_window` out of any GGUF header without ever asking
+  llama.cpp whether it can build the arch — an unknown arch gets a sized KV and the same 223 ms "does not fit".
+  The arch being supported rests on the fork evidence above, not on this line. What the line does show is that
+  the refusal is **transient**: four foreign HRX clients were resident and the box was at load 46.6, leaving
+  6.0 GiB of 122 GiB, against flint's **24.07 GiB** minimum (weights alone 23.33 GiB).
+
+  **And 24.07 GiB is a lower bound, so the re-run condition has to pin the context.** `model_need()` takes the
+  share of layers that attend over the *full* context from a per-arch list (`gpt-oss`, `gemma2` and `gemma3` at
+  one in 2, 5 or 6 layers) or from an `attention.sliding_window_pattern` array in the file; "an architecture
+  not listed counts every layer as windowed (the estimate stays a lower bound)", `flint` is not on that list, so
+  unless its GGUF carries an `attention.sliding_window_pattern` array every one of its 49 layers is priced at the
+  window. flint's 14 full-attention layers are then not priced at
+  the model's own 262144 context, which is why the same 24.07 GiB comes back at ctx 4096, 8192 and 262144 alike.
+  Priced properly those 14 layers add roughly `0.24 GiB × 14/49 × 262144/(window+512)` — about 3.9 GiB for a
+  4096-token window — so on a box with 24-28 GiB free the planner can **admit** flint at its own context and the
+  load then overruns the GTT ceiling (the engine #680 shape the refusal line cites). The honest re-run is
+  therefore **`--ctx-size 8192` with >= 24 GiB free**, where the windowed estimate and the real need are close;
+  a run at the model's own context needs its own figure, not this one.
+
+  The hold itself was clean — 0 GPU fault lines, 0 leftover backends — which is recorded here so it is not
+  mistaken for evidence about flint. Its cells stay *pending* until a run gets past the load.
 
   **Sampling** the model recommends, and what the GGUF's own `general.sampling.*` metadata already
   carries: **temp 1.0, top-p 0.95, top-k 20**. It is a reasoning model — it emits `<think> … </think>`
