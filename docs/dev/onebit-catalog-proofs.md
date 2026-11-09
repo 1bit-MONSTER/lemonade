@@ -121,16 +121,24 @@ re-measured rows).
   deterministic, not a race.
 
   **The trigger is serve's own warm-up, measured (2026-11-09).** Two arms in one `gpu-hold`, same lemond, same checkpoint,
-  68 GiB free: with the warm-ups the chat answers 500 and the log carries 6 NaN lines; with **`ONEBIT_NO_WARMUP=1`** the same
-  load answers **200 with text** and the log carries **0**. So the model, the architecture and the ops it needs are fine —
-  the poisoning happens in the warm-up request serve sends before it says ready, which is why nothing a *client* did ever
-  reproduced it. Until engine#1539 fixes that, flint can be served on this pin with `ONEBIT_NO_WARMUP=1` (the first request
-  then pays what the warm-up would have, ~2 s of small-batch weight-layout build); the row stays *pending* because the shipped
-  default still fails, and a workaround is not a proof. The hold was clean around it — **0** amdgpu fault lines, 0 leftover backends — and the
-  frame is the first decode, not the load, which rules out placement and the graph. That is engine
-  **[#1539](https://github.com/1bit-MONSTER/engine/issues/1539)**: the arch and the load are fine, the
-  kernel/op path for this architecture is not, so the row cannot be proven until that is fixed. Its cells stay
-  *pending* for that reason, which is the only reason left.
+  68 GiB free, one **short** client chat ("say hello") at ctx 8192: with the warm-ups that chat answers 500 and the log carries
+  6 NaN lines; with **`ONEBIT_NO_WARMUP=1`** the same load answers **200 with text** and the log carries **0**. The hold was
+  clean around both — 0 amdgpu fault lines, 0 leftover backends — and the abort is on the first *decode*, not the load, which
+  rules out placement and the graph.
+
+  What that does and does not license. It puts the failure in the **request serve sends before it says ready**, not in a
+  client's own traffic — a distinction that matters because the warm-ups are two different requests: the first samples
+  (`/v1/chat/completions`, a ~485-token prompt, `max_tokens 8`), the second does not (`/completion`, `" a"` × 16,
+  `n_predict 0`). **One short chat cannot separate "the warm-up poisons the graph" from "a prompt of the warm-up's length
+  fails wherever it comes from"**, and the number that makes that live is `sliding_window 513` against that ~485-token
+  prompt. If it is the length, then `ONEBIT_NO_WARMUP=1` moves the failure to the first client request of that length rather
+  than removing it. The arm that decides it is engine **#1689**'s `ONEBIT_WARMUP=long|short`. Until it runs, the honest
+  statement is the narrow one: with the warm-ups off, a *short* chat answers 200 with text and 0 NaN lines; whether a client
+  prompt as long as the warm-up's also fails is unmeasured.
+
+  So the row's cells stay *pending* on engine **[#1539](https://github.com/1bit-MONSTER/engine/issues/1539)**, and the reason
+  recorded here is the request, not the architecture: the arch is in the pin and the load is accepted, and what is not yet
+  known is which warm-up-induced condition the sampler chokes on.
 
   **Sampling** the model recommends, and what the GGUF's own `general.sampling.*` metadata already
   carries: **temp 1.0, top-p 0.95, top-k 20**. It is a reasoning model — it emits `<think> … </think>`
