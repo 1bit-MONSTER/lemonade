@@ -118,7 +118,15 @@ re-measured rows).
   ```
 
   `llama-server` exits **134** and the request answers 500; the router's retries aborted identically (4/4), so it is
-  deterministic, not a race. The hold was clean around it — **0** amdgpu fault lines, 0 leftover backends — and the
+  deterministic, not a race.
+
+  **The trigger is serve's own warm-up, measured (2026-11-09).** Two arms in one `gpu-hold`, same lemond, same checkpoint,
+  68 GiB free: with the warm-ups the chat answers 500 and the log carries 6 NaN lines; with **`ONEBIT_NO_WARMUP=1`** the same
+  load answers **200 with text** and the log carries **0**. So the model, the architecture and the ops it needs are fine —
+  the poisoning happens in the warm-up request serve sends before it says ready, which is why nothing a *client* did ever
+  reproduced it. Until engine#1539 fixes that, flint can be served on this pin with `ONEBIT_NO_WARMUP=1` (the first request
+  then pays what the warm-up would have, ~2 s of small-batch weight-layout build); the row stays *pending* because the shipped
+  default still fails, and a workaround is not a proof. The hold was clean around it — **0** amdgpu fault lines, 0 leftover backends — and the
   frame is the first decode, not the load, which rules out placement and the graph. That is engine
   **[#1539](https://github.com/1bit-MONSTER/engine/issues/1539)**: the arch and the load are fine, the
   kernel/op path for this architecture is not, so the row cannot be proven until that is fixed. Its cells stay
