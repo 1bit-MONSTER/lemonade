@@ -120,21 +120,23 @@ re-measured rows).
   `llama-server` exits **134** and the request answers 500; the router's retries aborted identically (4/4), so it is
   deterministic, not a race.
 
-  **The trigger is serve's own warm-up, measured (2026-11-09).** Two arms in one `gpu-hold`, same lemond, same checkpoint,
-  68 GiB free, one **short** client chat ("say hello") at ctx 8192: with the warm-ups that chat answers 500 and the log carries
-  6 NaN lines; with **`ONEBIT_NO_WARMUP=1`** the same load answers **200 with text** and the log carries **0**. The hold was
-  clean around both — 0 amdgpu fault lines, 0 leftover backends — and the abort is on the first *decode*, not the load, which
-  rules out placement and the graph.
+  **What the nine runs on 2026-11-09 narrowed it to (they also retired two wrong answers of mine).** The first pair looked like
+  serve's warm-up: with the warm-ups a short chat answered 500 with 6 NaN lines, with `ONEBIT_NO_WARMUP=1` it answered 200 with
+  0. Five more runs on the same pin took that back, and the note records the conclusion rather than the detour — a client
+  prompt of the same shape fails with the warm-ups **off**, and a prompt that merely *looks* long passes:
 
-  What that does and does not license. It puts the failure in the **request serve sends before it says ready**, not in a
-  client's own traffic — a distinction that matters because the warm-ups are two different requests: the first samples
-  (`/v1/chat/completions`, a ~485-token prompt, `max_tokens 8`), the second does not (`/completion`, `" a"` × 16,
-  `n_predict 0`). **One short chat cannot separate "the warm-up poisons the graph" from "a prompt of the warm-up's length
-  fails wherever it comes from"**, and the number that makes that live is `sliding_window 513` against that ~485-token
-  prompt. If it is the length, then `ONEBIT_NO_WARMUP=1` moves the failure to the first client request of that length rather
-  than removing it. The arm that decides it is engine **#1689**'s `ONEBIT_WARMUP=long|short`. Until it runs, the honest
-  statement is the narrow one: with the warm-ups off, a *short* chat answers 200 with text and 0 NaN lines; whether a client
-  prompt as long as the warm-up's also fails is unmeasured.
+  * a client prompt of `/no_think In one word: is this text long?` followed by `" lorem ipsum"` × 4 fails **8/8** with four
+    NaN lines per request, with the warm-ups **off** — so the warm-up is not the cause, it was one failing request among
+    several;
+  * the same question alone, the filler alone, a **419-character** prompt, a 13-token and a 14-token prefix all answer
+    **200** — so length is not the variable either;
+  * and every token of the failing prompt appears in a passing one:
+    `44778, 9237, 758, 631, 703, 1867, 25, 332, 463, 1688, 1223, 30, 113853, 32776, …`.
+
+  So the trigger is the **combination of tokens**, not a token, not the length, and not serve's warm-up. There is **no
+  client-side workaround**: the same prompt sent by a client fails the same way, which is why `ONEBIT_NO_WARMUP=1` is not
+  offered here as one. The row stays *pending* until engine #1539 finds what the combination does to the graph, and the
+  reproducible repro for whoever does is the 20-token prompt above, token ids included.
 
   So the row's cells stay *pending* on engine **[#1539](https://github.com/1bit-MONSTER/engine/issues/1539)**, and the reason
   recorded here is the request, not the architecture: the arch is in the pin and the load is accepted, and what is not yet
