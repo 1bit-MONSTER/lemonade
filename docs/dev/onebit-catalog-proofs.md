@@ -118,11 +118,29 @@ re-measured rows).
   ```
 
   `llama-server` exits **134** and the request answers 500; the router's retries aborted identically (4/4), so it is
-  deterministic, not a race. The hold was clean around it — **0** amdgpu fault lines, 0 leftover backends — and the
-  frame is the first decode, not the load, which rules out placement and the graph. That is engine
-  **[#1539](https://github.com/1bit-MONSTER/engine/issues/1539)**: the arch and the load are fine, the
-  kernel/op path for this architecture is not, so the row cannot be proven until that is fixed. Its cells stay
-  *pending* for that reason, which is the only reason left.
+  deterministic, not a race.
+
+  **What the nine runs on 2026-11-09 narrowed it to (they also retired two wrong answers of mine).** The first pair looked like
+  serve's warm-up: with the warm-ups a short chat answered 500 with 6 NaN lines, with `ONEBIT_NO_WARMUP=1` it answered 200 with
+  0. Five more runs on the same pin took that back, and the note records the conclusion rather than the detour — a client
+  prompt of the same shape fails with the warm-ups **off**, and a prompt that merely *looks* long passes:
+
+  * a client prompt of `/no_think In one word: is this text long?` followed by `" lorem ipsum"` × 4 fails **8/8** with four
+    NaN lines per request, with the warm-ups **off** — so the warm-up is not the cause, it was one failing request among
+    several;
+  * the same question alone, the filler alone, a **419-character** prompt, a 13-token and a 14-token prefix all answer
+    **200** — so length is not the variable either;
+  * and every token of the failing prompt appears in a passing one:
+    `44778, 9237, 758, 631, 703, 1867, 25, 332, 463, 1688, 1223, 30, 113853, 32776, …`.
+
+  So the trigger is the **combination of tokens**, not a token, not the length, and not serve's warm-up. There is **no
+  client-side workaround**: the same prompt sent by a client fails the same way, which is why `ONEBIT_NO_WARMUP=1` is not
+  offered here as one. The row stays *pending* until engine #1539 finds what the combination does to the graph, and the
+  reproducible repro for whoever does is the 20-token prompt above, token ids included.
+
+  So the row's cells stay *pending* on engine **[#1539](https://github.com/1bit-MONSTER/engine/issues/1539)**, and the reason
+  recorded here is the request, not the architecture: the arch is in the pin and the load is accepted, and what is not yet
+  known is which warm-up-induced condition the sampler chokes on.
 
   **Sampling** the model recommends, and what the GGUF's own `general.sampling.*` metadata already
   carries: **temp 1.0, top-p 0.95, top-k 20**. It is a reasoning model — it emits `<think> … </think>`
