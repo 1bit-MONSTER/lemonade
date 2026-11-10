@@ -120,32 +120,49 @@ re-measured rows).
   `llama-server` exits **134** and the request answers 500; the router's retries aborted identically (4/4), so it is
   deterministic, not a race.
 
-  **What the nine runs on 2026-11-09 narrowed it to (they also retired two wrong answers of mine).** The first pair looked like
-  serve's warm-up: with the warm-ups a short chat answered 500 with 6 NaN lines, with `ONEBIT_NO_WARMUP=1` it answered 200 with
-  0. Five more runs on the same pin took that back, and the note records the conclusion rather than the detour — a client
-  prompt of the same shape fails with the warm-ups **off**, and a prompt that merely *looks* long passes:
+  **What 2026-11-09 narrowed it to, and what 2026-11-10 took back.** The first pair of runs on 11-09 looked like serve's
+  warm-up: with the warm-ups a short chat answered 500 with 6 NaN lines, with `ONEBIT_NO_WARMUP=1` it answered 200 with 0.
+  Five more runs that evening took the warm-up reading back, and a full day of interleaved windows on 11-10 took back two
+  more of the conclusions recorded there. What is left is narrower and stranger:
 
-  * a client prompt of `/no_think In one word: is this text long?` followed by `" lorem ipsum"` × 4 fails **8/8** with four
-    NaN lines per request, with the warm-ups **off** — so the warm-up is not the cause, it was one failing request among
-    several;
-  * the same question alone, the filler alone, a **419-character** prompt, a 13-token and a 14-token prefix all answer
-    **200** — so length is not the variable either;
-  * and every token of the failing prompt appears in a passing one:
-    `44778, 9237, 758, 631, 703, 1867, 25, 332, 463, 1688, 1223, 30, 113853, 32776, …`.
+  * **Not the tokens.** Two prompts that share no prefix and no filler — `… is this text long?` + `" lorem ipsum"` × 4, and
+    `… is this text long?` + `" word"` × 16, and `" count:"` + `" lorem ipsum"` × 8 — fail or pass *together*, and a
+    window where the first fails 0/6 also fails the second 0/6 while `/no_think Say hello.` passes 6/6. A single-window
+    6-arm test also passed 20×`lorem`, 20×`ipsum` and `lorem ipsum` × 8 (16/16) three minutes before the identical
+    39-token `lorem ipsum` prompt failed 0/4. So token identity, token pair (`lorem ipsum`) and the prefix phrase are all
+    out; the *window* is in.
+  * **Not the length** — but length decides what survives *inside* a bad window: a ladder of prompts from 15 to 39 tokens
+    passes **2/2 at every rung** as the first request of a fresh load in a good window, and in a bad window every arm from
+    21 to 35 tokens fails while the 11-token one passes. The threshold moves between windows, which is why "a 419-character
+    prompt passes" and "a 20-token prompt fails 8/8" were both true.
+  * **Not serve's warm-up, and the warm-up is not a workaround**: with the warm-ups **on**, both warm-up requests fail
+    (`/v1/chat/completions` and `/completion`, curl `-1`), the wrapper still prints `ready`, and then the backend
+    **aborts** — `1bit serve: a hrx backend exited: signal 6`, with a `common_sampler_sample → post_decode → update_slots`
+    frame. With `ONEBIT_NO_WARMUP=1` the same fault instead surfaces on the **first client request** as the 502 above, and
+    after that the process is useless: a short prompt, the failing prompt again, and a one-token `"Hi"` all answered 502
+    in 12/12 further requests, with **no** additional NaN line (the NaN fires once, on the first completion).
+  * **Not the embedding table**: `token_embd.weight` is `[2048, 150144]` Q8_0 in this container and all **150,144** rows
+    scan clean — no non-finite scale, no zero-scale row, max scale `4.7e-4 … 9.8e-3`. `·lorem` (113853) and `·ipsum`
+    (32776) are ordinary rows.
+  * **Not a readiness race**: settling 0 s / 1 s / 3 s after `/health` before the first request gave 0/4, 0/4, 0/4.
 
-  So the trigger is the **combination of tokens**, not a token, not the length, and not serve's warm-up. There is **no
-  client-side workaround**: the same prompt sent by a client fails the same way, which is why `ONEBIT_NO_WARMUP=1` is not
-  offered here as one. The row stays *pending* until engine #1539 finds what the combination does to the graph.
+  So the failure is a **box state that lasts minutes**: in it, the first completion of a fresh load produces all-NaN logits
+  (`count=150144 of 150144, contiguous=yes`) at the first sampling step, before any `prompt eval` timing line is printed,
+  and the process never recovers. The row stays *pending* on engine
+  **[#1539](https://github.com/1bit-MONSTER/engine/issues/1539)**, where the 11-10 handover comment carries the full table
+  of exclusions, the per-window conditions, and the scripts that produced them.
 
   **Nothing of Lemonade's is in the failing path** (2026-11-10): the same prompt run through the engine alone —
   `1bit serve -m flint-UD-Q4_K_XL.gguf --device hrx`, no lemond, no model store, no one-hop planning — answers **502 with two
   NaN log lines**. So this is not a recipe, a wrapper or a backend-registration problem: it is `1bit serve` forwarding a prompt
   to llama-server on HRX, and the logits coming back non-finite. The repro a kernel lane needs is therefore smaller than a
-  catalogue entry — the 20-token prompt above, token ids included, one binary and one file.
+  catalogue entry — any prompt of ~20+ tokens as the **first** request of a fresh load, one binary and one file, in a
+  window that is in the failing state.
 
   So the row's cells stay *pending* on engine **[#1539](https://github.com/1bit-MONSTER/engine/issues/1539)**, and the reason
   recorded here is the request, not the architecture: the arch is in the pin and the load is accepted, and what is not yet
-  known is which warm-up-induced condition the sampler chokes on.
+  known is what the box state does to the first dispatch — not which prompt, not which warm-up, both of which 11-10 ruled
+  out (the handover comment on #1539 lists the eight exclusions, each with its measurement).
 
   **Sampling** the model recommends, and what the GGUF's own `general.sampling.*` metadata already
   carries: **temp 1.0, top-p 0.95, top-k 20**. It is a reasoning model — it emits `<think> … </think>`
