@@ -125,12 +125,12 @@ re-measured rows).
   Five more runs that evening took the warm-up reading back, and a full day of interleaved windows on 11-10 took back two
   more of the conclusions recorded there. What is left is narrower and stranger:
 
-  * **Not the tokens.** Two prompts that share no prefix and no filler — `… is this text long?` + `" lorem ipsum"` × 4, and
-    `… is this text long?` + `" word"` × 16, and `" count:"` + `" lorem ipsum"` × 8 — fail or pass *together*, and a
-    window where the first fails 0/6 also fails the second 0/6 while `/no_think Say hello.` passes 6/6. A single-window
-    6-arm test also passed 20×`lorem`, 20×`ipsum` and `lorem ipsum` × 8 (16/16) three minutes before the identical
-    39-token `lorem ipsum` prompt failed 0/4. So token identity, token pair (`lorem ipsum`) and the prefix phrase are all
-    out; the *window* is in.
+  * **Not the tokens.** Three prompts that differ in prefix, in filler, or in both — `… is this text long?` + `" lorem
+    ipsum"` × 4, `" count:"` + `" lorem ipsum"` × 8, and `… is this text long?` + `" word"` × 16 — fail or pass *together*
+    in a window: in one window with all six arms interleaved, every arm of 21–39 tokens failed 0/6 while
+    `/no_think Say hello.` passed 6/6. And a window three minutes earlier passed 20×`lorem`, 20×`ipsum` and `lorem ipsum`
+    × 8 (16/16) before the byte-identical 39-token `lorem ipsum` prompt failed 0/4 in the next one. So token identity, the
+    pair `lorem ipsum`, and the prefix phrase are all out; the *window* is in.
   * **Not the length** — but length decides what survives *inside* a bad window: a ladder of prompts from 15 to 39 tokens
     passes **2/2 at every rung** as the first request of a fresh load in a good window, and in a bad window every arm from
     21 to 35 tokens fails while the 11-token one passes. The threshold moves between windows, which is why "a 419-character
