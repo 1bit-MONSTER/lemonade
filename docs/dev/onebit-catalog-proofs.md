@@ -135,8 +135,13 @@ re-measured rows).
 
   So the trigger is the **combination of tokens**, not a token, not the length, and not serve's warm-up. There is **no
   client-side workaround**: the same prompt sent by a client fails the same way, which is why `ONEBIT_NO_WARMUP=1` is not
-  offered here as one. The row stays *pending* until engine #1539 finds what the combination does to the graph, and the
-  reproducible repro for whoever does is the 20-token prompt above, token ids included.
+  offered here as one. The row stays *pending* until engine #1539 finds what the combination does to the graph.
+
+  **Nothing of Lemonade's is in the failing path** (2026-11-10): the same prompt run through the engine alone —
+  `1bit serve -m flint-UD-Q4_K_XL.gguf --device hrx`, no lemond, no model store, no one-hop planning — answers **502 with two
+  NaN log lines**. So this is not a recipe, a wrapper or a backend-registration problem: it is `1bit serve` forwarding a prompt
+  to llama-server on HRX, and the logits coming back non-finite. The repro a kernel lane needs is therefore smaller than a
+  catalogue entry — the 20-token prompt above, token ids included, one binary and one file.
 
   So the row's cells stay *pending* on engine **[#1539](https://github.com/1bit-MONSTER/engine/issues/1539)**, and the reason
   recorded here is the request, not the architecture: the arch is in the pin and the load is accepted, and what is not yet
