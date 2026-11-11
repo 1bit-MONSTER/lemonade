@@ -147,8 +147,9 @@ Lemonade supports multiple inference engines for LLM, speech, TTS, and image gen
   </thead>
   <tbody>
     <tr>
-      <td rowspan="13"><strong>Text generation</strong></td>
-      <td rowspan="6"><code>llamacpp</code></td>
+
+      <td rowspan="18"><strong>Text generation</strong></td>
+      <td rowspan="8"><code>llamacpp</code></td>
       <td><code>system</code></td>
       <td><code>x86_64</code>/ARM64 CPU, GPU</td>
       <td>Linux</td>
@@ -177,6 +178,16 @@ Lemonade supports multiple inference engines for LLM, speech, TTS, and image gen
       <td><code>cpu</code></td>
       <td><code>x86_64</code> CPU; ARM64 CPU (Linux)</td>
       <td>Windows, Linux</td>
+    </tr>
+    <tr>
+      <td><code>nathanw</code>‡</td>
+      <td>AMD Strix Halo (Vulkan performance fork)</td>
+      <td>Linux</td>
+    </tr>
+    <tr>
+      <td><code>halobox</code>‡</td>
+      <td>AMD Strix Halo (Halo Box ROCm fork)</td>
+      <td>Linux</td>
     </tr>
     <tr>
       <td rowspan="1"><code>llamacpp-hrx</code></td>
@@ -209,6 +220,21 @@ Lemonade supports multiple inference engines for LLM, speech, TTS, and image gen
       <td>Linux</td>
     </tr>
     <tr>
+      <td rowspan="1"><code>rocmfpx</code></td>
+      <td><code>rocm</code>‡</td>
+      <td>AMD Strix Halo</td>
+      <td>Linux</td>
+    </tr>
+    <tr>
+      <td rowspan="1"><code>halogen</code></td>
+      <td><code>rocm</code>‡</td>
+      <td>AMD Strix Halo</td>
+      <td>Linux</td>
+    </tr>
+    <tr>
+      <td rowspan="1"><code>gufo</code></td>
+      <td><code>rocm</code>‡</td>
+      <td>AMD Strix Halo</td>
       <td rowspan="2"><code>onebit</code></td>
       <td><code>hrx</code>‡</td>
       <td>Strix Halo iGPU through AMD's HRX</td>
@@ -309,7 +335,7 @@ Lemonade supports multiple inference engines for LLM, speech, TTS, and image gen
       <td>Windows, Linux</td>
     </tr>
     <tr>
-      <td rowspan="6"><strong>Image generation</strong></td>
+      <td rowspan="7"><strong>Image generation</strong></td>
       <td rowspan="5"><code>sd-cpp</code></td>
       <td><code>metal</code></td>
       <td>Apple Silicon GPU</td>
@@ -336,14 +362,24 @@ Lemonade supports multiple inference engines for LLM, speech, TTS, and image gen
       <td>Windows, Linux</td>
     </tr>
     <tr>
-      <td rowspan="1"><code>thenoise</code></td>
+      <td rowspan="2"><code>thenoise</code></td>
       <td><code>rocm</code></td>
       <td>Supported AMD ROCm families</td>
       <td>Windows, Linux</td>
     </tr>
     <tr>
-      <td rowspan="3"><strong>3D generation</strong></td>
-      <td rowspan="3"><code>trellis</code></td>
+      <td><code>cuda</code>†</td>
+      <td>NVIDIA GPUs</td>
+      <td>Linux</td>
+    </tr>
+    <tr>
+      <td rowspan="4"><strong>3D generation</strong></td>
+      <td rowspan="4"><code>trellis</code></td>
+      <td><code>cuda12</code>†</td>
+      <td>NVIDIA Pascal/Volta GPUs (CUDA 12)</td>
+      <td>Windows, Linux</td>
+    </tr>
+    <tr>
       <td><code>cuda</code>†</td>
       <td>NVIDIA GPUs</td>
       <td>Windows, Linux</td>
