@@ -15,15 +15,17 @@ type RelevantDownload = {
 interface ChatReadinessProgressProps {
   modelName: string;
   recipe: string;
-  modelSizeGiB?: number;
+  modelSizeGb?: number;
   phase: PreparationPhase | null;
   isLoaded: boolean;
 }
 
-/** ModelInfo.size is GiB; the UX estimate assumes 1 decimal GB/s + 1 s startup. */
-export function estimatedModelLoadPercent(sizeGiB: number | undefined, elapsedMs: number): number | null {
-  if (sizeGiB === undefined || !Number.isFinite(sizeGiB) || sizeGiB <= 0) return null;
-  const estimatedMs = 1000 + sizeGiB * (1024 ** 3 / 1_000_000_000) * 1000;
+/** ModelInfo.size is decimal GB (see src/cpp/include/lemon/model_size.h); the UX estimate assumes
+ *  1 GB/s + 1 s startup. This used to multiply by 1024^3/1e9, i.e. read the field as GiB — a third copy
+ *  of the unit engine#1381 wrote down once. */
+export function estimatedModelLoadPercent(sizeGb: number | undefined, elapsedMs: number): number | null {
+  if (sizeGb === undefined || !Number.isFinite(sizeGb) || sizeGb <= 0) return null;
+  const estimatedMs = 1000 + sizeGb * 1000;
   return Math.max(0, Math.min(99, Math.floor(Math.max(0, elapsedMs) / estimatedMs * 99)));
 }
 
@@ -57,7 +59,7 @@ export function relevantChatDownload(
 
 /** Isolated from ChatView: 1 Hz download updates never rerender the message thread. */
 const ChatReadinessProgress: React.FC<ChatReadinessProgressProps> = React.memo(({
-  modelName, recipe, modelSizeGiB, phase, isLoaded,
+  modelName, recipe, modelSizeGb, phase, isLoaded,
 }) => {
   const { t } = useI18n();
   const [download, setDownload] = useState<RelevantDownload | null>(null);
@@ -101,7 +103,7 @@ const ChatReadinessProgress: React.FC<ChatReadinessProgressProps> = React.memo((
     : stage === 'loading' ? t('Loading model') : t('Waiting for model');
   const percent = download ? download.percent
     : stage === 'downloading' ? 0
-    : stage === 'loading' ? estimatedModelLoadPercent(modelSizeGiB, elapsedMs) : null;
+    : stage === 'loading' ? estimatedModelLoadPercent(modelSizeGb, elapsedMs) : null;
 
   return (
     <div className="composer__readiness-anchor">

@@ -3974,7 +3974,7 @@ ${finalText}`
                 <ChatReadinessProgress
                   modelName={progressModelName}
                   recipe={progressRecipe}
-                  modelSizeGiB={progressModelInfo?.size}
+                  modelSizeGb={progressModelInfo?.size}
                   phase={modelPreparation?.phase || (modelPickerLoading ? 'loading' : null)}
                   isLoaded={loadedModels.some(model => model.model_name.toLowerCase() === progressModelName.toLowerCase())}
                 />
