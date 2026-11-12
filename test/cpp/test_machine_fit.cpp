@@ -240,10 +240,14 @@ static void test_backend_missing_rejections() {
 
 static void test_memory_fit_rules() {
     BackendAvailability availability = supported_machine();
-    // Threshold is max(largest pool, 80% of RAM) = 25.6 GB.
+    // Threshold is max(largest pool 20.0, 80% of 32.0 RAM) = 25.6, and that figure is in the pool's
+    // unit (1024^3-based, system_info.cpp). `ModelInfo::size` is decimal GB (lemon/model_size.h), so
+    // the comparison converts: 25.6 GiB is 27.49 decimal GB. The fixture used 25.0/26.0 GB, which was
+    // "under/over" only while the two were compared without converting -- the unit bug fork #44
+    // (engine#1381) fixed. 28.0 is the smallest round number of decimal GB that is over 25.6 GiB.
     std::map<std::string, ModelInfo> models;
     models["JustUnder"] = model("llamacpp", 25.0);
-    models["JustOver"] = model("llamacpp", 26.0);
+    models["JustOver"] = model("llamacpp", 28.0);
 
     const FilterResult result = filter_hardware(models, availability);
     check("a model within the threshold stays visible",

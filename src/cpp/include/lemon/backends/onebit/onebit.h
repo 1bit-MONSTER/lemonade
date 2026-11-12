@@ -52,7 +52,14 @@ inline const BackendDescriptor descriptor = {
         {"hrx", BackendTier::Guest, BackendFormat::Native, {"linux"}, {{"amd_gpu", {"gfx1151"}}}, "Strix Halo iGPU through AMD's HRX"},
         {"npu", BackendTier::Guest, BackendFormat::Native, {"linux"}, {{"amd_npu", {"XDNA2"}}}, "XDNA2 NPU (1bit NPU model directories)"},
     },
-    /*supported_modes*/ {"chat", "embeddings", "reranking"},  // `1bit serve --embedding / --reranking`
+    // `classification` is here because `OnebitServer` derives from `LlamaCppServer`, which
+    // implements `IClassificationServer` (zero-shot labels answered through /v1/systemone). The
+    // descriptor's capabilities are derived from the base classes, so the interface is stamped
+    // whether or not this list names it -- and upstream's contract test requires the two to agree
+    // in both directions (`test_backend_mode_contract`: "implemented and not declared agree").
+    // Leaving it out made the pinned tree's own suite fail on this backend (found validating the
+    // v2026.46.2 pin, engine#2282).
+    /*supported_modes*/ {"chat", "embeddings", "reranking", "classification"},  // `1bit serve --embedding / --reranking`
     /*required_checkpoints*/ {"main"},
     /*default_capabilities*/ {},
     /*web_display_name*/ "1bit engine",
