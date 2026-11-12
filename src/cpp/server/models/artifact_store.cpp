@@ -1,5 +1,5 @@
-#include <lemon/models/artifact_ref.h>
 #include <lemon/model_size.h>
+#include <lemon/models/artifact_ref.h>
 #include <lemon/models/artifact_store.h>
 
 #include <lemon/backends/backend_ops.h>

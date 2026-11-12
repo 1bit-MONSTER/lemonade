@@ -18,7 +18,11 @@ ClassifierServices make_router_classifier_services(
         [&router](const json& request) { return router.chat_completion(request); },
         std::move(ensure_loaded),
         [&router](const json& request) { return router.classify(request); },
-        [&router](const std::string& model) { return router.get_model_type(model); });
+
+        [&router](const std::string& model) { return router.get_model_type(model); },
+        [&router](const nlohmann::ordered_json& request) {
+            return json(router.systemone(request));
+        });
     // The engine's resident router daemon (`1bit route --serve`, docs/laya-first.md): the `laya`
     // classifier type asks it for the request class instead of loading a model of its own. A daemon
     // that is absent or dead answers ok=false, so the condition applies on_error rather than the

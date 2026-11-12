@@ -1,5 +1,5 @@
-#include <lemon/canonical_id.h>
 #include "lemon/model_size.h"
+#include <lemon/canonical_id.h>
 #include <lemon/models/registry_types.h>
 #include <lemon/model_types.h>
 #include <lemon/models/host_availability.h>
@@ -135,13 +135,13 @@ FilterResult filter_hardware(const std::map<std::string, ModelInfo>& models,
                 }
             } else if (availability.system_ram_gb > 0.0
                        && lemon::units::gigabyte_to_gibibyte(info.size) > max_model_size_gb) {
+                // Printed in the unit `size` uses, so the three numbers in one sentence agree.
                 // Non-streaming: the whole model must fit (80% of system RAM).
                 filter_out = true;
                 cause = RejectCause::MemoryFit;
                 size_filtered_recipes.insert(recipe);
                 std::ostringstream oss;
                 oss << std::fixed << std::setprecision(1);
-                // Printed in the unit `size` uses, so the three numbers in one sentence agree.
                 oss << "This model requires approximately " << info.size << " GB of memory, "
                     << "but your system only has "
                     << lemon::units::gibibyte_to_gigabyte(availability.system_ram_gb) << " GB of RAM. "
