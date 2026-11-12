@@ -34,12 +34,19 @@ inline const BackendDescriptor descriptor = {
     /*options*/ {
         {"onebit_backend", "--onebit", "", "BACKEND",
          "Device 1bit serve runs the model on: auto, hrx or npu", "1bit Options"},
+        // engine#46-port (upstream v2026.46.2 breaking change 3): every option says whether a CLIENT should offer
+        // a control for it. `onebit_args` is an allow-listed pass-through to `1bit serve` and `onebit_pm_experts` is
+        // a file path inside our own package - neither is a preference a user picks, and showing them invites a
+        // broken serve that reads as a model failure. `onebit_pm` and `onebit_backend` stay configurable: they are
+        // the two choices this backend actually offers.
         {"onebit_args", "--onebit-args", "", "ARGS",
-         "Extra tuning arguments for 1bit serve (allow-listed; see onebit::allowed_arg_flags)", "1bit Options"},
+         "Extra tuning arguments for 1bit serve (allow-listed; see onebit::allowed_arg_flags)", "1bit Options",
+         /*user_configurable=*/false},
         {"onebit_pm", "--onebit-pm", false, "BOOL",
          "Project Manager: the model answers or delegates each chat to an expert model this Lemonade runs (1bit serve --pm)", "1bit Options"},
         {"onebit_pm_experts", "--onebit-pm-experts", "", "PATH",
-         "Experts file for --onebit-pm (default: the engine's built-in config/pm-experts.json)", "1bit Options"},
+         "Experts file for --onebit-pm (default: the engine's built-in config/pm-experts.json)", "1bit Options",
+         /*user_configurable=*/false},
     },
     /*support*/ {
         {"hrx", BackendTier::Guest, BackendFormat::Native, {"linux"}, {{"amd_gpu", {"gfx1151"}}}, "Strix Halo iGPU through AMD's HRX"},
