@@ -3227,7 +3227,8 @@
             "chat",
             "reasoning"
         ],
-        "size": 0.69
+        "size": 0.69,
+        "suggested": true
     },
     "MiniCPM-V-4.6-1bit": {
         "checkpoint": "OpenBMB/MiniCPM-V-4.6-gguf:MiniCPM-V-4_6-Q4_K_M.gguf",
@@ -3235,7 +3236,8 @@
         "labels": [
             "chat"
         ],
-        "size": 0.53
+        "size": 0.53,
+        "suggested": true
     },
     "LFM2-1.2B-1bit": {
         "checkpoint": "LiquidAI/LFM2-1.2B-GGUF:LFM2-1.2B-Q4_K_M.gguf",
@@ -3243,7 +3245,8 @@
         "labels": [
             "chat"
         ],
-        "size": 0.731
+        "size": 0.731,
+        "suggested": true
     },
     "Qwen3-0.6B-1bit": {
         "checkpoint": "unsloth/Qwen3-0.6B-GGUF:Q4_K_M",
@@ -3252,7 +3255,8 @@
             "chat",
             "reasoning"
         ],
-        "size": 0.4
+        "size": 0.4,
+        "suggested": true
     },
     "Qwen3-1.7B-1bit": {
         "checkpoint": "unsloth/Qwen3-1.7B-GGUF:Qwen3-1.7B-Q4_K_M.gguf",
@@ -3261,7 +3265,8 @@
             "chat",
             "reasoning"
         ],
-        "size": 1.11
+        "size": 1.11,
+        "suggested": true
     },
     "Qwen3-4B-1bit": {
         "checkpoint": "unsloth/Qwen3-4B-GGUF:Qwen3-4B-Q4_K_M.gguf",
@@ -3270,7 +3275,8 @@
             "chat",
             "reasoning"
         ],
-        "size": 2.5
+        "size": 2.5,
+        "suggested": true
     },
     "Qwen3-8B-1bit": {
         "checkpoint": "unsloth/Qwen3-8B-GGUF:Qwen3-8B-Q4_K_M.gguf",
@@ -3279,7 +3285,8 @@
             "chat",
             "reasoning"
         ],
-        "size": 5.03
+        "size": 5.03,
+        "suggested": true
     },
     "Qwen3.5-4B-1bit": {
         "checkpoint": "unsloth/Qwen3.5-4B-GGUF:Qwen3.5-4B-UD-Q4_K_XL.gguf",
@@ -3288,7 +3295,8 @@
             "chat",
             "tool-calling"
         ],
-        "size": 2.91
+        "size": 2.91,
+        "suggested": true
     },
     "Qwen3-Embedding-0.6B-1bit": {
         "checkpoint": "Qwen/Qwen3-Embedding-0.6B-GGUF:Qwen3-Embedding-0.6B-Q8_0.gguf",
@@ -3296,7 +3304,8 @@
         "labels": [
             "embeddings"
         ],
-        "size": 0.64
+        "size": 0.64,
+        "suggested": true
     },
     "bge-reranker-v2-m3-1bit": {
         "checkpoint": "pqnet/bge-reranker-v2-m3-Q8_0-GGUF",
@@ -3304,7 +3313,8 @@
         "labels": [
             "reranking"
         ],
-        "size": 0.636
+        "size": 0.636,
+        "suggested": true
     },
     "Qwen3-Reranker-0.6B-1bit": {
         "checkpoint": "mradermacher/Qwen3-Reranker-0.6B-GGUF:Q8_0",
@@ -3312,7 +3322,8 @@
         "labels": [
             "reranking"
         ],
-        "size": 0.64
+        "size": 0.64,
+        "suggested": true
     },
     "GLM-4.7-Flash-1bit": {
         "checkpoint": "unsloth/GLM-4.7-Flash-GGUF:GLM-4.7-Flash-Q4_K_M.gguf",
@@ -3322,7 +3333,8 @@
             "reasoning",
             "tool-calling"
         ],
-        "size": 18.3
+        "size": 18.3,
+        "suggested": true
     },
     "Qwen3-4B-Instruct-2507-1bit": {
         "checkpoint": "unsloth/Qwen3-4B-Instruct-2507-GGUF:Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
@@ -3331,7 +3343,8 @@
             "chat",
             "tool-calling"
         ],
-        "size": 2.5
+        "size": 2.5,
+        "suggested": true
     },
     "nomic-embed-text-v2-moe-1bit": {
         "checkpoint": "nomic-ai/nomic-embed-text-v2-moe-GGUF:Q8_0",
@@ -3339,7 +3352,8 @@
         "labels": [
             "embeddings"
         ],
-        "size": 0.51
+        "size": 0.51,
+        "suggested": true
     },
     "jina-reranker-v1-tiny-en-1bit": {
         "checkpoint": "mradermacher/jina-reranker-v1-tiny-en-GGUF:Q8_0",
@@ -3347,7 +3361,8 @@
         "labels": [
             "reranking"
         ],
-        "size": 0.0367
+        "size": 0.0367,
+        "suggested": true
     },
     "Qwen3.6-35B-A3B-NPU-1bit": {
         "checkpoint": "1bit-MONSTER/Qwen3.6-35B-A3B-NPU",
@@ -3359,7 +3374,8 @@
             "chat",
             "reasoning"
         ],
-        "size": 23.2
+        "size": 23.2,
+        "suggested": true
     },
     "Qwen3-0.6B-NPU-1bit": {
         "checkpoint": "FastFlowLM/Qwen3-0.6B-NPU2",
@@ -3370,7 +3386,8 @@
         "labels": [
             "chat"
         ],
-        "size": 0.697
+        "size": 0.697,
+        "suggested": true
     },
     "Qwen3-1.7B-NPU-1bit": {
         "checkpoint": "FastFlowLM/Qwen3-1.7B-NPU2",
@@ -3381,7 +3398,8 @@
         "labels": [
             "chat"
         ],
-        "size": 1.71
+        "size": 1.71,
+        "suggested": true
     },
     "Qwen3-4B-NPU-1bit": {
         "checkpoint": "FastFlowLM/Qwen3-4B-NPU2",
@@ -3392,7 +3410,8 @@
         "labels": [
             "chat"
         ],
-        "size": 3.31
+        "size": 3.31,
+        "suggested": true
     },
     "ZAYA1-8B-1bit": {
         "checkpoint": "1bit-MONSTER/ZAYA1-8B-GGUF:zaya1-8b-Q4_K_M.gguf",
@@ -3401,7 +3420,8 @@
             "chat",
             "reasoning"
         ],
-        "size": 5.57
+        "size": 5.57,
+        "suggested": true
     },
     "ZAYA1-8B-PM-1bit": {
         "checkpoint": "1bit-MONSTER/ZAYA1-8B-GGUF:zaya1-8b-Q4_K_M.gguf",
@@ -3413,7 +3433,8 @@
             "chat",
             "tool-calling"
         ],
-        "size": 5.57
+        "size": 5.57,
+        "suggested": true
     },
     "Qwen2.5-Coder-7B-Instruct-1bit": {
         "checkpoint": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:qwen2.5-coder-7b-instruct-q4_k_m.gguf",
@@ -3423,7 +3444,8 @@
             "coding",
             "tool-calling"
         ],
-        "size": 4.68
+        "size": 4.68,
+        "suggested": true
     },
     "Qwen2.5-Coder-1.5B-Instruct-1bit": {
         "checkpoint": "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF:qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
@@ -3432,7 +3454,8 @@
             "chat",
             "coding"
         ],
-        "size": 1.12
+        "size": 1.12,
+        "suggested": true
     },
     "Qwen3-Coder-30B-A3B-Instruct-1bit": {
         "checkpoint": "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF:Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
@@ -3442,7 +3465,8 @@
             "coding",
             "tool-calling"
         ],
-        "size": 18.6
+        "size": 18.6,
+        "suggested": true
     },
     "Qwen3.8-27B-1bit": {
         "checkpoint": "unsloth/Qwen3.8-27B-GGUF:Qwen3.8-27B-UD-Q4_K_XL.gguf",
@@ -3453,7 +3477,8 @@
             "tool-calling",
             "mtp"
         ],
-        "size": 17.6
+        "size": 17.6,
+        "suggested": true
     },
     "gpt-oss-20b-mxfp4-1bit": {
         "checkpoint": "ggml-org/gpt-oss-20b-GGUF:gpt-oss-20b-MXFP4.gguf",
@@ -3463,7 +3488,8 @@
             "reasoning",
             "tool-calling"
         ],
-        "size": 12.1
+        "size": 12.1,
+        "suggested": true
     },
     "flint-40b-a2.5b": {
         "checkpoint": "unsloth/flint-GGUF:flint-UD-Q4_K_XL.gguf",
@@ -3474,6 +3500,7 @@
             "coding",
             "tool-calling"
         ],
-        "size": 25.1
+        "size": 25.1,
+        "suggested": true
     }
 }
