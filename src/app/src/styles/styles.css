@@ -1418,8 +1418,6 @@ input[type="checkbox"]:disabled {
   flex-wrap: wrap;
 }
 
-.composer__toolbar > .composer__tools-toggle { margin-top: 3px; }
-
 .composer__tools-toggle {
   display: inline-flex;
   align-items: center;
