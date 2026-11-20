@@ -13,7 +13,7 @@ the generator instead. Prose outside the markers is preserved. -->
 | `ds4` | DwarfStar4 | no | yes | rocm |
 | `flm` | FastFlowLM NPU | no | yes | npu |
 | `gufo` | Gufo | no | yes | rocm |
-| `halogen` | Halogen Flash | no | yes | rocm |
+| `halogen` | Halogen | no | yes | rocm |
 | `kokoro` | Kokoro | no | no | cpu, metal |
 | `llamacpp` | Llama.cpp GPU | yes | yes | cpu, cuda, halobox, metal, nathanw, rocm, system, vulkan |
 | `llamacpp-hrx` | HRX GPU | no | yes | hrx |
@@ -172,6 +172,13 @@ Each backend has a tier and a format; see [Backend Tiers and Formats](../api/lem
 | `openmoss_backend` | `--openmoss` | BACKEND | "" | OpenMOSS TTS backend to use |
 | `pcm_sample_rate` | — | SIZE | 0 | Sample rate of the PCM this model emits, reported as X-MOSS-Sample-Rate (0 omits the header) |
 | `pcm_channels` | — | SIZE | 0 | Channel count of the PCM this model emits, reported as X-MOSS-Channels (0 omits the header) |
+
+#### `rocmfpx` — ROCm FPX
+
+| Option | CLI flag | Type | Default | Description |
+|--------|----------|------|---------|-------------|
+| `ctx_size` | `--ctx-size` | SIZE | -1 | Context size for the model |
+| `rocmfpx_args` | `--rocmfpx-args` | ARGS | "" | Custom arguments to pass to the ROCm FPX llama-server |
 
 #### `rocmfpx` — ROCm FPX
 
