@@ -59,6 +59,11 @@ inline const BackendDescriptor descriptor = {
     // in both directions (`test_backend_mode_contract`: "implemented and not declared agree").
     // Leaving it out made the pinned tree's own suite fail on this backend (found validating the
     // v2026.46.2 pin, engine#2282).
+    // v2026.47.1 inserted `about` immediately before `supported_modes` in BackendDescriptor, and this
+    // descriptor is built positionally, so every value below shifted one slot: the mode list landed in the
+    // `about` map and the build stopped at "could not convert ... from brace-enclosed initializer list".
+    // Empty is the correct value here -- the onebit backend has no about-page entry.
+    /*about*/ {},
     /*supported_modes*/ {"chat", "embeddings", "reranking", "classification"},  // `1bit serve --embedding / --reranking`
     /*required_checkpoints*/ {"main"},
     /*default_capabilities*/ {},
