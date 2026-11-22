@@ -134,7 +134,8 @@ std::string extract_backend_error_message(const json& backend_response) {
 }
 
 json create_backend_error_response(const std::string& server_name, int status_code,
-                                   const json& backend_response) {
+                                   const json& backend_response,
+                                   const std::map<std::string, std::string>& backend_headers = {}) {
     std::string message = extract_backend_error_message(backend_response);
     if (message.empty()) {
         message = server_name + " request failed";
@@ -166,6 +167,16 @@ json create_backend_error_response(const std::string& server_name, int status_co
     if (is_context_window_error(message)) {
         error["type"] = "invalid_request_error";
         error["code"] = "context_length_exceeded";
+    }
+
+    // A backend that says how long to wait (Retry-After on a 429/503, e.g. the onebit NPU route's
+    // device_busy refusal) is passed on: set_error_response turns retry_after back into the header,
+    // so a client can back off instead of guessing. Only a whole number of seconds is carried.
+    if (auto it = backend_headers.find("retry-after"); it != backend_headers.end()) {
+        const std::string& v = it->second;
+        if (!v.empty() && v.size() <= 6 && v.find_first_not_of("0123456789") == std::string::npos) {
+            error["retry_after"] = std::stoi(v);
+        }
     }
 
     return {{"error", error}};
@@ -650,7 +661,8 @@ json WrappedServer::forward_get_request(const std::string& endpoint, long timeou
             error_details = response.body;
         }
 
-        return create_backend_error_response(server_name_, response.status_code, error_details);
+        return create_backend_error_response(server_name_, response.status_code, error_details,
+                                             response.headers);
     } catch (const std::exception& e) {
         if (was_watchdog_triggered() || has_backend_process_exited() || is_backend_connection_failure(e.what())) {
             if (!was_watchdog_triggered()) {
@@ -714,7 +726,8 @@ Json WrappedServer::forward_body(const std::string& endpoint,
             return create_backend_error_response(
                 server_name_,
                 response.status_code,
-                error_details
+                error_details,
+                response.headers
             );
         }
     } catch (const utils::HttpClientCancellationException& e) {

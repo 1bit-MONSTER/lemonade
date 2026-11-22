@@ -793,6 +793,11 @@ void ApiRoute::record_usage(const json& response, const RouteRequest& req) const
 
 void set_error_response(const json& response, httplib::Response& res, const RouteError& fallback) {
     res.status = get_error_status_code(response, fallback.status);
+    // the backend's Retry-After, carried as error.retry_after by create_backend_error_response
+    if (response.is_object() && response.contains("error") && response["error"].is_object() &&
+        response["error"].contains("retry_after") && response["error"]["retry_after"].is_number_integer()) {
+        res.set_header("Retry-After", std::to_string(response["error"]["retry_after"].get<int>()));
+    }
     res.set_content(response.dump(), "application/json");
 }
 
