@@ -39,15 +39,28 @@ struct FakeRouter {
     bool exclusive = false;
     int begins = 0, ends = 0;
     bool refuse_begin = false;
+    bool busy_until_cancel = false;
+    int cancelled = 0;
+    int evicts = 0;
     std::map<std::string, json> loaded;
     std::vector<std::pair<std::string, json>> reloads;
     std::string fail_reload;
 
     HeavyWorkHold::Hooks hooks() {
         HeavyWorkHold::Hooks h;
-        h.begin_exclusive = [this] {
+        h.begin_exclusive = [this](std::atomic<bool>* cancel) {
+            // busy_until_cancel: the section stays held by in-flight work until the attempt is cancelled (a router
+            // that never frees up within the caller's wait)
+            for (;;) {
+                {
+                    std::lock_guard<std::mutex> l(m);
+                    if (refuse_begin) return false;
+                    if (!busy_until_cancel) break;
+                    if (cancel && cancel->load()) { ++cancelled; return false; }
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
             std::lock_guard<std::mutex> l(m);
-            if (refuse_begin) return false;
             exclusive = true;
             ++begins;
             return true;
@@ -59,6 +72,7 @@ struct FakeRouter {
         };
         h.evict_all = [this] {
             std::lock_guard<std::mutex> l(m);
+            ++evicts;
             auto out = loaded;
             loaded.clear();
             return out;
@@ -97,6 +111,38 @@ static void test_hold_and_release() {
           "a model comes back with its options and its pin");
     CHECK(!fr.exclusive && fr.begins == 1 && fr.ends == 1, "the section is given back exactly once");
     CHECK(hold.status()["active"] == false, "status is inactive after the release");
+}
+
+// engine review of #58: a hold whose caller gives up before the section is taken must NOT start later - otherwise it
+// evicts every model and holds for max_seconds with no one left to release it.
+static void test_abandoned_wait_is_cancelled() {
+    FakeRouter fr;
+    fr.loaded["Qwen3-0.6B-1bit"] = {{"options", json::object()}, {"pinned", false}};
+    fr.busy_until_cancel = true;
+    HeavyWorkHold hold(fr.hooks());
+    json out;
+    std::string err;
+    const auto t0 = std::chrono::steady_clock::now();
+    const bool ok = hold.begin("heavy", 3600, out, err, /*wait_seconds=*/1);
+    const double took = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    CHECK(!ok && err.find("within 1 s") != std::string::npos && err.find("nothing was unloaded") != std::string::npos,
+          "a section that stays busy past wait_seconds is refused, and says nothing was unloaded");
+    CHECK(took >= 0.9 && took < 3.0, "begin() returns at the deadline, not when the router frees up");
+    CHECK(fr.cancelled == 1 && fr.evicts == 0 && fr.loaded.size() == 1 && !fr.exclusive,
+          "the attempt was cancelled inside the router: no eviction, no section taken, the model still loaded");
+    CHECK(hold.status()["active"] == false, "no hold is left behind");
+    {
+        std::lock_guard<std::mutex> l(fr.m);
+        fr.busy_until_cancel = false;   // the router frees up later...
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    CHECK(fr.evicts == 0 && fr.loaded.size() == 1, "...and the abandoned attempt does not start then");
+    json out2;
+    CHECK(hold.begin("next", 60, out2, err, 5) && out2["unloaded"].size() == 1, "a later hold works normally");
+    json rel;
+    CHECK(hold.release(out2["hold_id"].get<std::string>(), rel), "and releases");
+    json bad;
+    CHECK(!hold.begin("x", 60, bad, err, 0) && err.find("wait_seconds") != std::string::npos, "wait_seconds 0 is refused");
 }
 
 static void test_expiry() {
@@ -188,6 +234,7 @@ int main() {
     lemon::RuntimeConfig::set_global(&config);
 
     test_hold_and_release();
+    test_abandoned_wait_is_cancelled();
     test_expiry();
     test_failed_reload_and_refusal();
     test_destructor_does_not_reload();

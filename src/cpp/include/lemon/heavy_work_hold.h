@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <functional>
@@ -25,7 +26,9 @@ public:
     using json = nlohmann::json;
 
     struct Hooks {
-        std::function<bool()> begin_exclusive;
+        // takes the router's exclusive section; returns false when *cancel becomes true before it is taken (the
+        // caller of begin() gave up), and then nothing is evicted
+        std::function<bool(std::atomic<bool>* cancel)> begin_exclusive;
         std::function<void()> end_exclusive;
         // model name -> {"options": {...}, "pinned": bool}, for every model it evicted
         std::function<std::map<std::string, json>()> evict_all;
@@ -42,7 +45,11 @@ public:
 
     // Blocks until the models are out. On success fills {"hold_id", "reason", "max_seconds", "unloaded"}; returns
     // false with `error` when a hold is already active or the exclusive section could not be taken.
-    bool begin(const std::string& reason, int max_seconds, json& out, std::string& error);
+    // wait_seconds bounds how long begin() waits for the section (in-flight requests, a running job). On that deadline
+    // the attempt is cancelled and nothing is unloaded: a hold must never start after its caller has given up, or every
+    // model would stay out for max_seconds with no one left to release it.
+    bool begin(const std::string& reason, int max_seconds, json& out, std::string& error,
+               int wait_seconds = kDefaultWaitSeconds);
 
     // Blocks until the captured models are reloaded. Fills {"hold_id", "reloaded", "failed", "expired"}; false when
     // `hold_id` is not the active hold.
@@ -52,6 +59,8 @@ public:
     json status() const;
 
     static constexpr int kMaxSecondsLimit = 24 * 3600;
+    static constexpr int kDefaultWaitSeconds = 300;   // below 1bit-heavy's 600 s client timeout
+    static constexpr int kMaxWaitSeconds = 3600;
 
 private:
     enum class Phase { Idle, Starting, Holding, Releasing };
@@ -67,6 +76,7 @@ private:
     bool release_requested_ = false;
     bool shutting_down_ = false;
     bool start_failed_ = false;
+    std::atomic<bool> cancel_start_{false};   // set when begin() gives up waiting for the section
     bool expired_ = false;
     std::string id_;
     std::string reason_;

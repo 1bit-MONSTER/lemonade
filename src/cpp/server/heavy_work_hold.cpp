@@ -26,9 +26,14 @@ void HeavyWorkHold::join_finished_locked(std::unique_lock<std::mutex>& lock) {
     lock.lock();
 }
 
-bool HeavyWorkHold::begin(const std::string& reason, int max_seconds, json& out, std::string& error) {
+bool HeavyWorkHold::begin(const std::string& reason, int max_seconds, json& out, std::string& error,
+                          int wait_seconds) {
     if (max_seconds <= 0 || max_seconds > kMaxSecondsLimit) {
         error = "max_seconds must be between 1 and " + std::to_string(kMaxSecondsLimit);
+        return false;
+    }
+    if (wait_seconds <= 0 || wait_seconds > kMaxWaitSeconds) {
+        error = "wait_seconds must be between 1 and " + std::to_string(kMaxWaitSeconds);
         return false;
     }
     std::unique_lock<std::mutex> lock(mutex_);
@@ -46,11 +51,21 @@ bool HeavyWorkHold::begin(const std::string& reason, int max_seconds, json& out,
     expired_ = false;
     unloaded_.clear();
     last_result_ = json::object();
+    cancel_start_ = false;
     worker_ = std::thread(&HeavyWorkHold::run, this, id_, max_seconds);
-    cv_.wait(lock, [&] { return phase_ != Phase::Starting; });
+    bool gave_up = false;
+    if (!cv_.wait_for(lock, std::chrono::seconds(wait_seconds), [&] { return phase_ != Phase::Starting; })) {
+        // the deadline: cancel the attempt and wait for the worker to come back. It either returns without evicting
+        // anything, or it took the section in the same instant - then the hold stands, and this caller still gets it
+        gave_up = true;
+        cancel_start_ = true;
+        cv_.wait(lock, [&] { return phase_ != Phase::Starting; });
+    }
     if (start_failed_) {
         join_finished_locked(lock);
-        error = "the model slots could not be taken";
+        error = gave_up ? "the model slots could not be taken within " + std::to_string(wait_seconds) +
+                              " s (requests in flight or a job hold them); nothing was unloaded"
+                        : "the model slots could not be taken";
         return false;
     }
     out = {{"hold_id", id_}, {"reason", reason_}, {"max_seconds", max_seconds_}, {"unloaded", unloaded_}};
@@ -86,7 +101,7 @@ HeavyWorkHold::json HeavyWorkHold::status() const {
 }
 
 void HeavyWorkHold::run(std::string id, int max_seconds) {
-    if (!hooks_.begin_exclusive()) {
+    if (!hooks_.begin_exclusive(&cancel_start_)) {
         std::lock_guard<std::mutex> lock(mutex_);
         start_failed_ = true;
         phase_ = Phase::Idle;
