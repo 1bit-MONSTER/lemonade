@@ -3447,6 +3447,7 @@ Requires `LEMONADE_API_KEY` when it is set.
 |-----------|----------|-------------|--------|
 | `reason` | No | What the slots are freed for, shown in `GET /v1/hold` and the log. | <sub>![Status](https://img.shields.io/badge/available-green)</sub> |
 | `max_seconds` | No | Releases the hold by itself after this many seconds, so a caller that died cannot keep every model out. Default 3600. | <sub>![Status](https://img.shields.io/badge/available-green)</sub> |
+| `wait_seconds` | No | How long to wait for in-flight requests (or a running job) to let go of the model slots. On the deadline the attempt is cancelled, nothing is unloaded, and the answer is 503, so a hold never starts after its caller has given up. Default 300. | <sub>![Status](https://img.shields.io/badge/available-green)</sub> |
 
 ### Example
 
