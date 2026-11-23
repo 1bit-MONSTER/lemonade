@@ -3524,7 +3524,7 @@
     "Inkling-2-Mini-1bit": {
         "checkpoints": {
             "main": "unsloth/Inkling-2-Mini-GGUF:Inkling-2-Mini-UD-Q4_K_XL.gguf",
-            "draft": "unsloth/Inkling-2-Mini-GGUF:dspark-Inkling-2-Mini-Q8_0.gguf"
+            "draft": "unsloth/Inkling-2-Mini-GGUF:dspark-Inkling-2-Mini-Q8_0_Old.gguf"
         },
         "recipe": "onebit",
         "labels": [
