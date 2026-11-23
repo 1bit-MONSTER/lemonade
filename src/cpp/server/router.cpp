@@ -782,6 +782,11 @@ std::unique_ptr<WrappedServer> Router::create_backend_server(const ModelInfo& mo
 
 bool Router::begin_exclusive(std::atomic<bool>* cancel) {
     std::unique_lock<std::mutex> lock(load_mutex_);
+    // A job and a heavy-work hold both take the section; the second one must not take over the first one's ownership.
+    while (exclusive_active_ && exclusive_owner_ != std::this_thread::get_id()) {
+        if (cancel && cancel->load()) return false;
+        exclusive_cv_.wait_for(lock, std::chrono::milliseconds(25));
+    }
     exclusive_active_ = true;
     exclusive_owner_ = std::this_thread::get_id();
     while (true) {
@@ -862,6 +867,25 @@ std::map<std::string, json> Router::unload_job_models(const std::map<std::string
         if (victim->is_pinned()) victim->set_pinned(false);
         LOG(INFO, "Router") << "Reconcile-unload of job-loaded model: "
                             << victim->get_model_name() << std::endl;
+        evict_server(victim);
+    }
+    return captured;
+}
+
+std::map<std::string, json> Router::evict_all_captured() {
+    std::unique_lock<std::mutex> lock(load_mutex_);
+    wait_for_slot_clearance(lock);
+    std::map<std::string, json> captured;
+    std::vector<WrappedServer*> victims;
+    for (const auto& server : loaded_servers_) {
+        if (!server->is_backend_alive()) continue;
+        captured[server->get_model_name()] = {{"options", server->get_recipe_options().to_json()},
+                                              {"pinned", server->is_pinned()}};
+        victims.push_back(server.get());
+    }
+    for (auto* victim : victims) {
+        if (victim->is_pinned()) victim->set_pinned(false);
+        LOG(INFO, "Router") << "Hold-unload of " << victim->get_model_name() << std::endl;
         evict_server(victim);
     }
     return captured;

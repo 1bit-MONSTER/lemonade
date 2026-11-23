@@ -4,6 +4,7 @@
 
 #include "lemon/backend_manager.h"
 #include "lemon/cloud_provider_registry.h"
+#include "lemon/heavy_work_hold.h"
 #include "lemon/jobs/job_manager.h"
 #include "lemon/model_manager.h"
 #include "lemon/router.h"
@@ -36,6 +37,7 @@ void register_lemonade_inference_routes(RouteRegistry& registry, ServerContext& 
 void register_lemonade_backends_routes(RouteRegistry& registry, ServerContext& ctx);
 void register_lemonade_system_routes(RouteRegistry& registry, ServerContext& ctx);
 void register_lemonade_jobs_routes(RouteRegistry& registry, ServerContext& ctx);
+void register_lemonade_hold_routes(RouteRegistry& registry, ServerContext& ctx);
 void register_llamacpp_routes(RouteRegistry& registry, ServerContext& ctx);
 void register_router_routes(RouteRegistry& registry, ServerContext& ctx);
 void register_internal_routes(RouteRegistry& registry, ServerContext& ctx);
@@ -121,6 +123,20 @@ Server::Server(std::shared_ptr<RuntimeConfig> config,
         cache_dir, config_dir, lemon::jobs::build_op_registry(JobOps::build(ctx_)));
     ctx_.job_manager = job_manager_.get();
 
+    HeavyWorkHold::Hooks hold_hooks;
+    hold_hooks.begin_exclusive = [this] { return router_->begin_exclusive(); };
+    hold_hooks.end_exclusive = [this] { router_->end_exclusive(); };
+    hold_hooks.evict_all = [this] { return router_->evict_all_captured(); };
+    hold_hooks.reload = [this](const std::string& model, const nlohmann::json& captured) {
+        auto info = model_manager_->get_model_info(model);
+        RecipeOptions options(info.recipe, captured.value("options", nlohmann::json::object()));
+        std::optional<bool> pinned = std::nullopt;
+        if (captured.contains("pinned") && captured["pinned"].is_boolean()) pinned = captured["pinned"].get<bool>();
+        router_->load_model(model, info, options, true, true, pinned, LoadPurpose::UserInference);
+    };
+    hold_ = std::make_unique<HeavyWorkHold>(std::move(hold_hooks));
+    ctx_.hold = hold_.get();
+
     LOG(DEBUG, "Server") << "Debug logging enabled - subprocess output will be visible" << std::endl;
 
     registry_ = std::make_unique<RouteRegistry>();
@@ -139,6 +155,7 @@ Server::Server(std::shared_ptr<RuntimeConfig> config,
     register_lemonade_backends_routes(*registry_, ctx_);
     register_lemonade_system_routes(*registry_, ctx_);
     register_lemonade_jobs_routes(*registry_, ctx_);
+    register_lemonade_hold_routes(*registry_, ctx_);
     register_llamacpp_routes(*registry_, ctx_);
     register_router_routes(*registry_, ctx_);
     register_internal_routes(*registry_, ctx_);

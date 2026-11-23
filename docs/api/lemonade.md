@@ -26,6 +26,9 @@ We have designed a set of Lemonade-specific endpoints to enable client applicati
 | `GET` | [`/v1/docs`](#get-v1docs) | List the API reference pages bundled with the running server |
 | `GET` | [`/v1/docs/{page}`](#get-v1docspage) | Read one bundled API reference page |
 | `GET` | [`/v1/health`](#get-v1health) | Check the server's status and loaded models |
+| `GET` | [`/v1/hold`](#get-v1hold) | Whether a hold keeps the model slots free |
+| `POST` | [`/v1/hold/release`](#post-v1holdrelease) | Bring the held models back |
+| `POST` | [`/v1/hold`](#post-v1hold) | Free every model slot for heavy work |
 | `GET` | [`/v1/stats`](#get-v1stats) | Read performance statistics from the last request |
 | `GET` | [`/v1/system-stats`](#get-v1system-stats) | Read the host's resource usage |
 | `GET` | [`/metrics`](#get-metrics) | Serve metrics for Prometheus to scrape |
@@ -3323,3 +3326,173 @@ Requires `LEMONADE_API_KEY` when it is set.
 |--------|------|
 | `404` | `id` names no job, or a deleted one |
 <!-- END GENERATED: lemonade.jobs_delete -->
+<!-- BEGIN GENERATED: lemonade.hold_status -->
+## `GET /v1/hold`
+<sub>![Status](https://img.shields.io/badge/status-experimental-orange)</sub>
+
+The active hold, if any: why, since when, and which models it will bring back.
+
+Requires `LEMONADE_API_KEY` when it is set.
+
+### Parameters
+
+This endpoint does not take any parameters.
+
+### Example
+
+=== "PowerShell"
+
+    ```powershell
+    Invoke-WebRequest -Uri "http://localhost:13305/v1/hold"
+    ```
+
+=== "Bash"
+
+    ```bash
+    curl http://localhost:13305/v1/hold
+    ```
+
+**Response:** `200 OK`
+
+```json
+{"active": false}
+```
+
+### Response format
+
+- `active` - Whether a hold keeps the model slots free.
+- `hold_id` - The active hold's id.
+- `reason` - The `reason` the hold was taken with.
+- `since_s` - Seconds since the models were unloaded.
+- `max_seconds` - When the hold releases itself.
+- `phase` - `starting` while in-flight requests finish, `holding` while the slots are free, `releasing` while the models come back.
+- `unloaded` - The models the hold unloaded and will load again.
+<!-- END GENERATED: lemonade.hold_status -->
+
+<!-- BEGIN GENERATED: lemonade.hold_release -->
+## `POST /v1/hold/release`
+<sub>![Status](https://img.shields.io/badge/status-experimental-orange)</sub>
+
+Loads the models a hold unloaded again, with the options they had, then lets the waiting requests run. Answers once they are loaded. Releasing a hold that already expired answers how it ended.
+
+Requires `LEMONADE_API_KEY` when it is set.
+
+### Parameters
+
+| Parameter | Required | Description | Status |
+|-----------|----------|-------------|--------|
+| `hold_id` | Yes | The `hold_id` that `POST /v1/hold` returned. | <sub>![Status](https://img.shields.io/badge/available-green)</sub> |
+
+### Example
+
+=== "PowerShell"
+
+    ```powershell
+    Invoke-WebRequest `
+      -Uri "http://localhost:13305/v1/hold/release" `
+      -Method POST `
+      -Headers @{ "Content-Type" = "application/json" } `
+      -Body '{"hold_id": "hold-1"}'
+    ```
+
+=== "Bash"
+
+    ```bash
+    curl http://localhost:13305/v1/hold/release \
+      -H "Content-Type: application/json" \
+      -d '{"hold_id": "hold-1"}'
+    ```
+
+**Response:** `200 OK`
+
+```json
+{
+  "hold_id": "hold-1",
+  "reloaded": ["Qwen3-0.6B-GGUF", "nomic-embed-text-v1-GGUF"],
+  "failed": [],
+  "expired": false
+}
+```
+
+### Response format
+
+- `hold_id` - The released hold.
+- `reloaded` - Models loaded again.
+- `failed` - Models that could not be loaded again; a later request loads them as usual.
+  - `model` - The model.
+  - `error` - Why it did not load.
+- `expired` - Whether `max_seconds` ended the hold before this call.
+
+### Errors
+
+| Status | Code | When |
+|--------|------|------|
+| `400` | `invalid_json` | The body is not a JSON object |
+| `400` | `missing_argument` | A required argument is missing |
+| `400` | `invalid_argument` | An argument or a value nested in it has the wrong JSON type, or a value its schema does not list |
+| `404` |  | `hold_id` is not the active hold, or the last one |
+<!-- END GENERATED: lemonade.hold_release -->
+
+<!-- BEGIN GENERATED: lemonade.hold -->
+## `POST /v1/hold`
+<sub>![Status](https://img.shields.io/badge/status-experimental-orange)</sub>
+
+Waits for in-flight requests to finish, unloads every loaded model and keeps the slots free until [`POST /v1/hold/release`](#post-v1holdrelease) or `max_seconds`. Requests that arrive meanwhile wait instead of loading a model, and run once the same models are back with the same options. Use it around a build, a quantization or a benchmark that needs the GPU, the NPU or the memory.
+
+Requires `LEMONADE_API_KEY` when it is set.
+
+### Parameters
+
+| Parameter | Required | Description | Status |
+|-----------|----------|-------------|--------|
+| `reason` | No | What the slots are freed for, shown in `GET /v1/hold` and the log. | <sub>![Status](https://img.shields.io/badge/available-green)</sub> |
+| `max_seconds` | No | Releases the hold by itself after this many seconds, so a caller that died cannot keep every model out. Default 3600. | <sub>![Status](https://img.shields.io/badge/available-green)</sub> |
+
+### Example
+
+=== "PowerShell"
+
+    ```powershell
+    Invoke-WebRequest `
+      -Uri "http://localhost:13305/v1/hold" `
+      -Method POST `
+      -Headers @{ "Content-Type" = "application/json" } `
+      -Body '{"reason": "quantize a checkpoint", "max_seconds": 1}'
+    ```
+
+=== "Bash"
+
+    ```bash
+    curl http://localhost:13305/v1/hold \
+      -H "Content-Type: application/json" \
+      -d '{"reason": "quantize a checkpoint", "max_seconds": 1}'
+    ```
+
+**Response:** `200 OK`
+
+```json
+{
+  "hold_id": "hold-2",
+  "reason": "quantize a checkpoint",
+  "max_seconds": 1,
+  "unloaded": ["Qwen3-0.6B-GGUF"]
+}
+```
+
+### Response format
+
+- `hold_id` - Pass it to `POST /v1/hold/release`.
+- `reason` - The `reason` given.
+- `max_seconds` - When the hold releases itself.
+- `unloaded` - The models that were unloaded.
+
+### Errors
+
+| Status | Code | When |
+|--------|------|------|
+| `400` | `invalid_json` | The body is not a JSON object |
+| `400` | `invalid_argument` | An argument or a value nested in it has the wrong JSON type, or a value its schema does not list |
+| `409` |  | a hold is already active; release it first |
+| `503` |  | the model slots could not be taken |
+<!-- END GENERATED: lemonade.hold -->
+

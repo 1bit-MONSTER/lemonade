@@ -6,6 +6,7 @@ class BackendManager;
 class CloudProviderRegistry;
 class ConfigEffects;
 class DownloadManager;
+class HeavyWorkHold;
 class HttpListener;
 class ModelJson;
 class ModelLoader;
@@ -39,6 +40,7 @@ struct ServerContext {
     ModelLoader* model_loader = nullptr;
     ModelJson* model_json = nullptr;
     DownloadManager* downloads = nullptr;
+    HeavyWorkHold* hold = nullptr;
 };
 
 } // namespace lemon

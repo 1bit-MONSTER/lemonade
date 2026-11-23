@@ -77,6 +77,7 @@ private:
     std::unique_ptr<ModelLoader> model_loader_;
     std::unique_ptr<DownloadManager> downloads_;
     std::unique_ptr<jobs::JobManager> job_manager_;
+    std::unique_ptr<HeavyWorkHold> hold_;
     ServerContext ctx_;
     std::unique_ptr<ConfigEffects> config_effects_;
     std::unique_ptr<RouteRegistry> registry_;

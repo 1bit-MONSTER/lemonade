@@ -10134,5 +10134,78 @@
         }
       }
     }
+  },
+  "00d31e3aa1d25066491dcdc52787aff5d0379944a44adf9b045dc3eeef83dfe2": {
+    "route": "lemonade.hold",
+    "format": "Json",
+    "request": {
+      "method": "POST",
+      "path": "/v1/hold",
+      "query": {},
+      "json": {
+        "reason": "quantize a checkpoint",
+        "max_seconds": 1
+      },
+      "form": {},
+      "files": {}
+    },
+    "response": {
+      "status": 200,
+      "content_type": "application/json",
+      "body": {
+        "hold_id": "hold-2",
+        "max_seconds": 1,
+        "reason": "quantize a checkpoint",
+        "unloaded": [
+          "Qwen3-0.6B-GGUF"
+        ]
+      }
+    }
+  },
+  "abf4310e16ae03439c2514b68129fc86cf0bece114d46880e21e0934cd4952b2": {
+    "route": "lemonade.hold_release",
+    "format": "Json",
+    "request": {
+      "method": "POST",
+      "path": "/v1/hold/release",
+      "query": {},
+      "json": {
+        "hold_id": "hold-1"
+      },
+      "form": {},
+      "files": {}
+    },
+    "response": {
+      "status": 200,
+      "content_type": "application/json",
+      "body": {
+        "expired": false,
+        "failed": [],
+        "hold_id": "hold-1",
+        "reloaded": [
+          "Qwen3-0.6B-GGUF",
+          "nomic-embed-text-v1-GGUF"
+        ]
+      }
+    }
+  },
+  "6dab8682d8b90e8b34a8137c6b1514a808b06192984041a062a6a4ae7db6fc6d": {
+    "route": "lemonade.hold_status",
+    "format": "Json",
+    "request": {
+      "method": "GET",
+      "path": "/v1/hold",
+      "query": {},
+      "json": null,
+      "form": {},
+      "files": {}
+    },
+    "response": {
+      "status": 200,
+      "content_type": "application/json",
+      "body": {
+        "active": false
+      }
+    }
   }
 }
