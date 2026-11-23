@@ -271,6 +271,8 @@ public:
     void end_exclusive();
 
     std::map<std::string, bool> snapshot_loaded_models() const;
+    // Must run on the exclusive section's owner. Model name -> {"options", "pinned"} for every model it evicted.
+    std::map<std::string, json> evict_all_captured();
     std::map<std::string, json> unload_job_models(const std::map<std::string, int>& owned_live,
                                                   const std::map<std::string, bool>& snapshot_pins);
     int loaded_model_pid(const std::string& model_name) const;

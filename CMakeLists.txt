@@ -1062,6 +1062,7 @@ set(SOURCES_CORE
     src/cpp/server/collection_orchestrator.cpp
     src/cpp/server/jobs/job_ops.cpp
     src/cpp/server/jobs/job_manager.cpp
+    src/cpp/server/heavy_work_hold.cpp
     src/cpp/server/router.cpp
     src/cpp/server/global_vram_monitor.cpp
     src/cpp/server/eviction_engine.cpp
@@ -4163,6 +4164,15 @@ if(BUILD_TESTING AND EXISTS "${_ROUTING_HELPER_RECONCILE_TEST_SRC}")
     # waits, so it drifts with routing constants rather than with this test.
     add_cpp_ci_test(RoutingHelperReconcileTest CI ON TIMEOUT 300
                     COMMAND test_routing_helper_reconcile)
+endif()
+
+# Heavy-work hold: models captured, evicted and restored with their options; the router's exclusive section is not
+# taken over by a second owner.
+set(_HEAVY_WORK_HOLD_TEST_SRC "${CMAKE_CURRENT_SOURCE_DIR}/test/cpp/test_heavy_work_hold.cpp")
+if(BUILD_TESTING AND EXISTS "${_HEAVY_WORK_HOLD_TEST_SRC}")
+    add_executable(test_heavy_work_hold test/cpp/test_heavy_work_hold.cpp)
+    target_link_libraries(test_heavy_work_hold PRIVATE lemonade-server-core)
+    add_cpp_ci_test(HeavyWorkHoldTest CI ON TIMEOUT 60 COMMAND test_heavy_work_hold)
 endif()
 
 # Launch command bookkeeping: the command recorded at spawn must keep describing
