@@ -3522,13 +3522,16 @@
         "suggested": true
     },
     "Inkling-2-Mini-1bit": {
-        "checkpoint": "unsloth/Inkling-2-Mini-GGUF:Inkling-2-Mini-UD-Q4_K_XL.gguf",
+        "checkpoints": {
+            "main": "unsloth/Inkling-2-Mini-GGUF:Inkling-2-Mini-UD-Q4_K_XL.gguf",
+            "draft": "unsloth/Inkling-2-Mini-GGUF:dspark-Inkling-2-Mini-Q8_0.gguf"
+        },
         "recipe": "onebit",
         "labels": [
             "chat",
             "reasoning"
         ],
-        "size": 17.6,
+        "size": 18.0,
         "suggested": true
     },
     "gpt-oss-20b-mxfp4-1bit": {
