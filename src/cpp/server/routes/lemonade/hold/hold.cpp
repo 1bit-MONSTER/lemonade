@@ -21,6 +21,14 @@ const RouteArg kMaxSeconds{"max_seconds",
                            Support::Available,
                            "Releases the hold by itself after this many seconds, so a caller that died cannot "
                            "keep every model out. Default 3600."};
+const RouteArg kWaitSeconds{"wait_seconds",
+                            ArgIn::JsonBody,
+                            {{"type", "integer"}, {"minimum", 1}, {"maximum", HeavyWorkHold::kMaxWaitSeconds}},
+                            false,
+                            Support::Available,
+                            "How long to wait for in-flight requests (or a running job) to let go of the model slots. "
+                            "On the deadline the attempt is cancelled, nothing is unloaded, and the answer is 503, so a "
+                            "hold never starts after its caller has given up. Default 300."};
 const RouteArg kHoldId{"hold_id", ArgIn::JsonBody, {{"type", "string"}, {"minLength", 1}}, true, Support::Available,
                        "The `hold_id` that `POST /v1/hold` returned."};
 
@@ -57,7 +65,7 @@ public:
             "instead of loading a model, and run once the same models are back with the same options. Use it "
             "around a build, a quantization or a benchmark that needs the GPU, the NPU or the memory.";
         s.request_format = RequestFormat::OptionalJson;
-        s.args = {kReason, kMaxSeconds};
+        s.args = {kReason, kMaxSeconds, kWaitSeconds};
         RouteResponse response;
         response.format = ResponseFormat::Json;
         response.schema = ordered_json::parse(R"({
@@ -82,9 +90,11 @@ public:
     void handle(RouteRequest& req, httplib::Response& res) override {
         const std::string reason = req.has(kReason) ? req.arg(kReason).get<std::string>() : std::string("heavy work");
         const int max_seconds = req.has(kMaxSeconds) ? req.arg(kMaxSeconds).get<int>() : 3600;
+        const int wait_seconds =
+            req.has(kWaitSeconds) ? req.arg(kWaitSeconds).get<int>() : HeavyWorkHold::kDefaultWaitSeconds;
         json out;
         std::string error;
-        if (!ctx_.hold->begin(reason, max_seconds, out, error)) {
+        if (!ctx_.hold->begin(reason, max_seconds, out, error, wait_seconds)) {
             const bool active = ctx_.hold->status().value("active", false);
             write_plain_error(res, active ? kHoldActive : kHoldNotStarted, error);
             return;

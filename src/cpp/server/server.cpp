@@ -124,7 +124,7 @@ Server::Server(std::shared_ptr<RuntimeConfig> config,
     ctx_.job_manager = job_manager_.get();
 
     HeavyWorkHold::Hooks hold_hooks;
-    hold_hooks.begin_exclusive = [this] { return router_->begin_exclusive(); };
+    hold_hooks.begin_exclusive = [this](std::atomic<bool>* cancel) { return router_->begin_exclusive(cancel); };
     hold_hooks.end_exclusive = [this] { router_->end_exclusive(); };
     hold_hooks.evict_all = [this] { return router_->evict_all_captured(); };
     hold_hooks.reload = [this](const std::string& model, const nlohmann::json& captured) {
