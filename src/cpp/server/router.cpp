@@ -427,23 +427,23 @@ void Router::transition_server_residency_locked(
 
 bool Router::ensure_loaded_model_residency(
     const std::string& model_name,
-    LoadPurpose load_purpose) {
+    LoadPurpose load_purpose,
+    const HoldWaitTick& on_hold_wait) {
     return ensure_loaded_model_residency_canonical(
-        resolve_model_name(model_name), load_purpose);
+        resolve_model_name(model_name), load_purpose, on_hold_wait);
 }
 
 bool Router::ensure_loaded_model_residency_canonical(
     const std::string& canonical_model_name,
-    LoadPurpose load_purpose) {
+    LoadPurpose load_purpose,
+    const HoldWaitTick& on_hold_wait) {
     const ResidencyClass requested_residency_class =
         residency_class_for_load_purpose(load_purpose);
 
     std::unique_lock<std::mutex> lock(load_mutex_);
-    load_cv_.wait(lock, [&] {
-        return !is_loading_ &&
-               (!exclusive_active_ ||
-                exclusive_owner_ == std::this_thread::get_id());
-    });
+    if (!wait_for_load_slot(lock, on_hold_wait)) {
+        throw std::runtime_error("the client stopped waiting for the model slots");
+    }
 
     prune_unavailable_servers_locked();
 
@@ -826,6 +826,40 @@ void Router::end_exclusive() {
     load_cv_.notify_all();
 }
 
+bool Router::slot_section_active() const {
+    std::lock_guard<std::mutex> lock(load_mutex_);
+    return exclusive_active_ && exclusive_owner_ != std::this_thread::get_id();
+}
+
+bool Router::wait_for_load_slot(std::unique_lock<std::mutex>& lock,
+                                const HoldWaitTick& on_hold_wait) {
+    auto ready = [&] {
+        return !is_loading_ &&
+               (!exclusive_active_ || exclusive_owner_ == std::this_thread::get_id());
+    };
+    // A request parked by a hold is otherwise silent on the wire, so its first keepalive goes out as soon as the
+    // exclusive section is what it waits for, and one more every kHoldWaitTickInterval after that.
+    bool announced = false;
+    while (!ready()) {
+        if (!on_hold_wait || !exclusive_active_ || exclusive_owner_ == std::this_thread::get_id()) {
+            load_cv_.wait(lock, ready);
+            continue;
+        }
+        if (announced) {
+            if (load_cv_.wait_for(lock, kHoldWaitTickInterval, ready)) continue;
+        } else {
+            announced = true;
+        }
+        if (ready()) continue;
+        // The tick writes to a client socket: never while holding the router's lock.
+        lock.unlock();
+        const bool keep_waiting = on_hold_wait();
+        lock.lock();
+        if (!keep_waiting) return false;
+    }
+    return true;
+}
+
 void Router::wait_for_slot_clearance(std::unique_lock<std::mutex>& lock) {
     exclusive_cv_.wait(lock, [&] {
         return !exclusive_active_ || exclusive_owner_ == std::this_thread::get_id();
@@ -909,7 +943,8 @@ void Router::load_model(const std::string& model_name,
                         bool allow_reload_on_option_change,
                         std::optional<bool> pinned,
                         LoadPurpose load_purpose,
-                        std::atomic<bool>* cancel_flag) {
+                        std::atomic<bool>* cancel_flag,
+                        const HoldWaitTick& on_hold_wait) {
     if (!is_router_collection_recipe(model_info.recipe) &&
         has_label(model_info.labels, "on-demand")) {
         throw ModelLoadRefusedException("On-demand models do not support persistent loading");
@@ -929,10 +964,9 @@ void Router::load_model(const std::string& model_name,
     // LOAD SERIALIZATION STRATEGY (from spec: point #2 in Additional Considerations)
     std::unique_lock<std::mutex> lock(load_mutex_);
 
-    load_cv_.wait(lock, [&] {
-        return !is_loading_
-               && (!exclusive_active_ || exclusive_owner_ == std::this_thread::get_id());
-    });
+    if (!wait_for_load_slot(lock, on_hold_wait)) {
+        throw std::runtime_error("the client stopped waiting for the model slots");
+    }
 
     is_loading_ = true;
 

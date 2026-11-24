@@ -265,6 +265,8 @@ public:
 protected:
     const RouteArg& model_arg() const override { return model_loading::kModel; }
 
+    bool answer_streams(const RouteRequest& req) const override { return req.value(common::kStream, false); }
+
     bool validate(RouteRequest& req, httplib::Response& res) override {
         // Router policies and Omni collections call backends here, before run() does.
         auto cancel = cancel_on_disconnect(req);

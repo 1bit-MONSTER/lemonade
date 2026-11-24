@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <string>
 #include <memory>
 #include <deque>
@@ -141,6 +142,16 @@ public:
     // ownership) — Server owns the registry.
     void set_cloud_registry(CloudProviderRegistry* registry);
 
+    // A request that a heavy-work hold (or a job) keeps out of the model slots calls this from its own thread while
+    // it waits, with no router lock held: a streaming answer writes its `: held` comment from here, so a client can
+    // tell "queued behind a hold" from "slow". Returning false means the client is gone, and the wait stops instead
+    // of parking a request nobody reads.
+    using HoldWaitTick = std::function<bool()>;
+    static constexpr std::chrono::seconds kHoldWaitTickInterval{5};
+
+    // Whether a hold (or a job) owns the model slots right now, so an auto-load would wait for it.
+    bool slot_section_active() const;
+
     // allow_reload_on_option_change: intended for explicit /load callers only.
     // Auto-load callers (inference-triggered) should leave this false so they
     // don't overturn options set by a prior explicit /load.
@@ -152,7 +163,8 @@ public:
         bool allow_reload_on_option_change = false,
         std::optional<bool> pinned = std::nullopt,
         LoadPurpose load_purpose = LoadPurpose::UserInference,
-        std::atomic<bool>* cancel_flag = nullptr);
+        std::atomic<bool>* cancel_flag = nullptr,
+        const HoldWaitTick& on_hold_wait = {});
 
     // Collapse the option precedence chain into the set a load would use.
     // *_args are resolved by scope: a concrete request replaces model/architecture
@@ -167,7 +179,8 @@ public:
     // Returns false when the requested model is not currently live.
     bool ensure_loaded_model_residency(
         const std::string& model_name,
-        LoadPurpose load_purpose);
+        LoadPurpose load_purpose,
+        const HoldWaitTick& on_hold_wait = {});
 
     // Record the authoritative set of routing-helper models the active policies
     // need resident (the union across all active policies, as policy-authored
@@ -327,6 +340,9 @@ private:
     std::thread::id exclusive_owner_;
     std::condition_variable exclusive_cv_;
     void wait_for_slot_clearance(std::unique_lock<std::mutex>& lock);
+    // Waits until no load and no exclusive section holds the residency slot, ticking a caller that wants to keep a
+    // client alive while the exclusive section is the blocker. Returns false when the tick says the client is gone.
+    bool wait_for_load_slot(std::unique_lock<std::mutex>& lock, const HoldWaitTick& on_hold_wait);
 
     std::unique_ptr<GlobalVramMonitor> vram_monitor_;
     std::unique_ptr<EvictionEngine> eviction_engine_;
@@ -355,7 +371,8 @@ private:
         ResidencyClass requested_residency_class);
     bool ensure_loaded_model_residency_canonical(
         const std::string& canonical_model_name,
-        LoadPurpose load_purpose);
+        LoadPurpose load_purpose,
+        const HoldWaitTick& on_hold_wait = {});
     bool has_npu_server() const;
     WrappedServer* find_npu_server() const;
     WrappedServer* find_npu_server_by_recipe(const std::string& recipe) const;

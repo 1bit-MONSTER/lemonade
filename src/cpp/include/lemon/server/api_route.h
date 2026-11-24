@@ -92,6 +92,9 @@ struct RouteRequest {
     // default purpose would demote a routing helper to a standard model.
     bool model_already_loaded = false;
     std::optional<RouterDispatchResult> route_decision;
+    // A streaming route's auto-load, deferred until the answer has started so a held request can write its
+    // `: held` comments while it waits. Returns false when it has already written the stream's error.
+    std::function<bool(httplib::DataSink&)> deferred_model_load;
 
     // serve() has renamed every alias to the argument's name, so these read one place: the body
     // for JsonBody and Form arguments, params for Query and Path ones.
@@ -150,6 +153,10 @@ protected:
     virtual const RouteArg& model_arg() const = 0;  // the argument that names the model
     virtual bool validate(RouteRequest& req, httplib::Response& res) { return true; }
     virtual void run(RouteRequest& req, httplib::Response& res) = 0;
+
+    // Whether this request's answer streams SSE. Only such a route may start its answer before the model loads,
+    // because the `: held` comment is part of the answer; in another body it would corrupt it.
+    virtual bool answer_streams(const RouteRequest&) const { return false; }
 
     // An exception escaping validate() or run() lands here. The default answers a residency
     // conflict with 409 and anything else with a 500 plain-string error; a route whose clients
