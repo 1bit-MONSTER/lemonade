@@ -40,6 +40,7 @@ from utils.server_base import (
     run_server_tests,
     OpenAI,
     pull_model_with_retry,
+    unload_all_models,
     _auth_headers,
 )
 from utils.test_models import (
@@ -9542,6 +9543,78 @@ class EndpointTests(ServerTestBase):
             timeout=TIMEOUT_DEFAULT,
         )
         self.assertEqual(resp.status_code, 200, f"/internal/set failed: {resp.text}")
+
+    def test_067_held_streaming_turn_sends_hold_keepalives(self):
+        """A streaming turn parked by a hold sends `: held <reason>` instead of nothing (#3478).
+
+        The hold unloads every model, so such a request waits in the model load path. It must start its
+        answer before that wait and keep the client informed, or a client cannot tell "queued behind a
+        hold" from "slow" and leaves.
+        """
+        unload_all_models()
+        hold = requests.post(
+            f"{self.base_url}/hold",
+            json={"reason": "stream keepalive test", "max_seconds": 120},
+            headers=_auth_headers(),
+            timeout=TIMEOUT_DEFAULT,
+        )
+        self.assertEqual(hold.status_code, 200, hold.text)
+        hold_id = hold.json()["hold_id"]
+        released = False
+        started = time.monotonic()
+        try:
+            # The read timeout bounds the control: without a keepalive the request sends no byte for 10 s.
+            response = requests.post(
+                f"{self.base_url}/chat/completions",
+                json={
+                    "model": "no-such-model-for-the-hold-test",
+                    "messages": [{"role": "user", "content": "hello"}],
+                    "stream": True,
+                },
+                headers=_auth_headers(),
+                stream=True,
+                timeout=(TIMEOUT_DEFAULT, 10),
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("text/event-stream", response.headers.get("Content-Type", ""))
+            lines = (line for line in response.iter_lines(decode_unicode=True) if line)
+            self.assertEqual(next(lines), ": held stream keepalive test")
+            self.assertLess(
+                time.monotonic() - started,
+                4.0,
+                "a held turn must say it is held within 4 s of the headers",
+            )
+            self.assertEqual(next(lines), ": held stream keepalive test")
+            self.assertGreaterEqual(
+                time.monotonic() - started,
+                4.0,
+                "the second keepalive comes one 5 s interval later",
+            )
+
+            release = requests.post(
+                f"{self.base_url}/hold/release",
+                json={"hold_id": hold_id},
+                headers=_auth_headers(),
+                timeout=TIMEOUT_DEFAULT,
+            )
+            self.assertEqual(release.status_code, 200, release.text)
+            released = True
+
+            rest = "\n".join(lines)
+            # This model does not exist, so the load that runs once the hold clears reports in-band: the
+            # 200 is already committed, and a bare EOF there would read as a broken stream.
+            self.assertIn("model_load_error", rest)
+            self.assertIn("Model not found", rest)
+            self.assertIn("data: [DONE]", rest)
+            self.assertNotIn(": held", rest, "keepalives stop when the hold clears")
+        finally:
+            if not released:
+                requests.post(
+                    f"{self.base_url}/hold/release",
+                    json={"hold_id": hold_id},
+                    headers=_auth_headers(),
+                    timeout=TIMEOUT_DEFAULT,
+                )
 
 
 if __name__ == "__main__":

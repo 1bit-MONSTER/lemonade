@@ -25,9 +25,12 @@ public:
     // load_options apply only to a first load, so options set by an explicit /v1/load win.
     // Pass load_options(), never a raw request body, so request-scoped fields stay
     // out of persistent recipe options.
+    // on_hold_wait runs on this thread every few seconds while a heavy-work hold (or a job) is what keeps the load
+    // waiting; returning false abandons the wait because the client is gone.
     void ensure_loaded(const std::string& model,
                        const nlohmann::json& load_options = nlohmann::json::object(),
-                       LoadPurpose purpose = LoadPurpose::UserInference);
+                       LoadPurpose purpose = LoadPurpose::UserInference,
+                       const Router::HoldWaitTick& on_hold_wait = {});
 
     // A collection has no backend of its own, so loading one loads each component.
     void ensure_collection_loaded(const ModelInfo& info);

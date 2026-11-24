@@ -11,6 +11,7 @@
 #include "../telemetry.h"
 #include "lemon/anthropic_error.h"
 #include "lemon/error_types.h"
+#include "lemon/heavy_work_hold.h"
 #include "lemon/model_manager.h"
 #include "lemon/route_decision_response.h"
 #include "lemon/router.h"
@@ -607,6 +608,72 @@ bool ApiRoute::check_args(RouteRequest& req, httplib::Response& res, bool query_
     return true;
 }
 
+namespace {
+
+// The keepalive a parked streaming request sends: an SSE comment line, so no client reads it as data. The hold's
+// reason is arbitrary text, and a CR or LF in it would end the comment and inject a line into the stream.
+bool write_hold_comment(httplib::DataSink& sink, const HeavyWorkHold* hold) {
+    std::string comment = ": held";
+    if (hold) {
+        const json status = hold->status();
+        if (status.value("active", false)) {
+            std::string reason = status.value("reason", "");
+            for (char& c : reason) {
+                if (c == '\r' || c == '\n') c = ' ';
+            }
+            if (!reason.empty()) comment += " " + reason;
+        }
+    }
+    comment += "\n\n";
+    return sink.write(comment.c_str(), comment.size());
+}
+
+// A load that fails after the 200 cannot set a status any more, so the stream carries the error instead.
+bool write_stream_load_error(httplib::DataSink& sink, ErrorFormat format, const std::string& message) {
+    std::string body;
+    switch (format) {
+        case ErrorFormat::OpenAi: {
+            json payload;
+            payload["error"] = {{"message", message}, {"type", "model_load_error"}};
+            body = "data: " + payload.dump() + "\n\ndata: [DONE]\n\n";
+            break;
+        }
+        case ErrorFormat::Anthropic: {
+            json payload;
+            payload["type"] = "error";
+            payload["error"] = {{"type", "api_error"}, {"message", message}};
+            body = "event: error\ndata: " + payload.dump() + "\n\n";
+            break;
+        }
+        case ErrorFormat::Plain:
+            return false;
+    }
+    return sink.write(body.c_str(), body.size());
+}
+
+// The auto-load of a streaming route, run once its answer has started so the client sees the wait.
+std::function<bool(httplib::DataSink&)> defer_model_load(
+    ModelLoader* loader, HeavyWorkHold* hold, const std::string& model, const json& options,
+    std::shared_ptr<telemetry::InferenceSpan> span, ErrorFormat format) {
+    return [loader, hold, model, options, span, format](httplib::DataSink& sink) {
+        auto on_hold_wait = [&sink, hold] { return write_hold_comment(sink, hold); };
+        try {
+            loader->ensure_loaded(model, options, LoadPurpose::UserInference, on_hold_wait);
+            if (span) span->cancel();
+            return true;
+        } catch (const std::exception& e) {
+            LOG(ERROR, "Server") << "Failed to load model: " << e.what() << std::endl;
+            if (span) span->end_with_error(e.what());
+            write_stream_load_error(sink, format, e.what());
+            // End the chunked body properly: a bare EOF here reads as a broken stream, not as the error event.
+            if (sink.done) sink.done();
+            return false;
+        }
+    };
+}
+
+} // namespace
+
 void ApiRoute::stream_response(RouteRequest& req, httplib::Response& res, StreamFn fn,
                                const std::string& content_type) {
     res.set_header("Cache-Control", "no-cache");
@@ -621,12 +688,13 @@ void ApiRoute::stream_response(RouteRequest& req, httplib::Response& res, Stream
         : json(nullptr);
     std::string body = req.body.is_null() ? req.http.body : req.body.dump();
     std::function<bool()> is_closed = req.http.is_connection_closed;
+    std::function<bool(httplib::DataSink&)> deferred_load = std::move(req.deferred_model_load);
 
     res.set_chunked_content_provider(
         content_type,
         [body = std::move(body), route_decision_json = std::move(route_decision_json),
-         is_closed = std::move(is_closed), fn = std::move(fn)](size_t offset,
-                                                                httplib::DataSink& sink) {
+         is_closed = std::move(is_closed), fn = std::move(fn),
+         deferred_load = std::move(deferred_load)](size_t offset, httplib::DataSink& sink) {
             if (offset > 0) {
                 return false;
             }
@@ -636,7 +704,8 @@ void ApiRoute::stream_response(RouteRequest& req, httplib::Response& res, Stream
             }
             WrappedServer::RequestCancelScope cancel_scope(token);
             stream_with_route_decision(sink, route_decision_json,
-                                       [&body, &fn](httplib::DataSink& route_sink) {
+                                       [&body, &fn, &deferred_load](httplib::DataSink& route_sink) {
+                                           if (deferred_load && !deferred_load(route_sink)) return;
                                            fn(body, route_sink);
                                        });
             return false;
@@ -671,16 +740,22 @@ void ModelRoute::handle(RouteRequest& req, httplib::Response& res) {
                 : telemetry::TelemetryTracker::start_span(load_span_name.kind,
                                                           load_span_name.name, req.model,
                                                           req.body);
-            try {
-                ctx_.model_loader->ensure_loaded(req.model,
-                                                 ModelLoader::load_options(req.arg(model_loading::kCtxSize)));
-            } catch (const std::exception& e) {
-                LOG(ERROR, "Server") << "Failed to load model: " << e.what() << std::endl;
-                ctx_.model_loader->write_load_error(res, req.model, e.what());
-                if (span) span->end_with_error(e.what());
-                return;
+            const json load_options = ModelLoader::load_options(req.arg(model_loading::kCtxSize));
+            if (answer_streams(req) && ctx_.router->slot_section_active()) {
+                // A hold has the slots: start the answer now, so the wait is visible, and load from inside it.
+                req.deferred_model_load = defer_model_load(ctx_.model_loader, ctx_.hold, req.model,
+                                                            load_options, span, req.spec.error_format);
+            } else {
+                try {
+                    ctx_.model_loader->ensure_loaded(req.model, load_options);
+                } catch (const std::exception& e) {
+                    LOG(ERROR, "Server") << "Failed to load model: " << e.what() << std::endl;
+                    ctx_.model_loader->write_load_error(res, req.model, e.what());
+                    if (span) span->end_with_error(e.what());
+                    return;
+                }
+                if (span) span->cancel();
             }
-            if (span) span->cancel();
         }
 
         run(req, res);
