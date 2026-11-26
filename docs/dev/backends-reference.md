@@ -187,6 +187,13 @@ Each backend has a tier and a format; see [Backend Tiers and Formats](../api/lem
 | `ctx_size` | `--ctx-size` | SIZE | -1 | Context size for the model |
 | `rocmfpx_args` | `--rocmfpx-args` | ARGS | "" | Custom arguments to pass to the ROCm FPX llama-server |
 
+#### `rocmfpx` — ROCm FPX
+
+| Option | CLI flag | Type | Default | Description |
+|--------|----------|------|---------|-------------|
+| `ctx_size` | `--ctx-size` | SIZE | -1 | Context size for the model |
+| `rocmfpx_args` | `--rocmfpx-args` | ARGS | "" | Custom arguments to pass to the ROCm FPX llama-server |
+
 #### `sd-cpp` — StableDiffusion.cpp
 
 | Option | CLI flag | Type | Default | Description |
