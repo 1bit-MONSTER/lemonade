@@ -26,9 +26,6 @@ We have designed a set of Lemonade-specific endpoints to enable client applicati
 | `GET` | [`/v1/docs`](#get-v1docs) | List the API reference pages bundled with the running server |
 | `GET` | [`/v1/docs/{page}`](#get-v1docspage) | Read one bundled API reference page |
 | `GET` | [`/v1/health`](#get-v1health) | Check the server's status and loaded models |
-| `GET` | [`/v1/hold`](#get-v1hold) | Whether a hold keeps the model slots free |
-| `POST` | [`/v1/hold/release`](#post-v1holdrelease) | Bring the held models back |
-| `POST` | [`/v1/hold`](#post-v1hold) | Free every model slot for heavy work |
 | `GET` | [`/v1/stats`](#get-v1stats) | Read performance statistics from the last request |
 | `GET` | [`/v1/system-stats`](#get-v1system-stats) | Read the host's resource usage |
 | `GET` | [`/metrics`](#get-metrics) | Serve metrics for Prometheus to scrape |
@@ -47,6 +44,9 @@ We have designed a set of Lemonade-specific endpoints to enable client applicati
 | `POST` | [`/v1/jobs/{id}/resume`](#post-v1jobsidresume) | Resume a job |
 | `GET` | [`/v1/jobs/{id}`](#get-v1jobsid) | Read a job |
 | `DELETE` | [`/v1/jobs/{id}`](#delete-v1jobsid) | Delete a job |
+| `GET` | [`/v1/hold`](#get-v1hold) | Whether a hold keeps the model slots free |
+| `POST` | [`/v1/hold/release`](#post-v1holdrelease) | Bring the held models back |
+| `POST` | [`/v1/hold`](#post-v1hold) | Free every model slot for heavy work |
 <!-- END GENERATED: lemonade.summary -->
 
 Some Lemonade endpoints live on other pages: the per-model [`/v1/models/{id}/files`](openai.md#get-v1modelsidfiles) and [`/v1/models/{id}/options`](openai.md#get-v1modelsidoptions) extensions sit with the OpenAI models endpoints, routing and [`/v1/routing/validate`](router.md#post-v1routingvalidate) are on the [Router API](router.md) page, and endpoints for clients bundled with the server are on the [Internal API](internal.md) page.
@@ -1028,10 +1028,10 @@ Requires `LEMONADE_API_KEY` when it is set.
 | `400` |  | `checkpoint` is missing or empty |
 | `400` |  | `checkpoint` is a URL whose registry disagrees with `source` |
 | `400` |  | `checkpoint` does not contain `/` |
-| `400` |  | `source` names an unsupported registry, or the Hugging Face GGUF repository is one llama.cpp cannot run |
+| `400` |  | `source` names an unsupported registry, the repository has no GGUF, ONNX RyzenAI or collection files, its collection manifest is invalid or too large, or the Hugging Face GGUF repository is one llama.cpp cannot run |
 | `400` | `lemond_offline` | `offline` is set to `true` |
 | `404` |  | The registry has no such checkpoint |
-| `500` |  | Another failure occurs, for example a repository with no GGUF, ONNX RyzenAI or collection files, or a network error |
+| `500` |  | Another failure occurs, for example a network error |
 <!-- END GENERATED: lemonade.pull_variants -->
 
 <!-- BEGIN GENERATED: lemonade.delete -->
@@ -2173,6 +2173,7 @@ The same backend can carry different labels on different operating systems. Each
     - `display_name` - The recipe's name for people, such as `Llama.cpp GPU`.
     - `web_display_name` - The recipe's name on the Lemonade website.
     - `modality` - The kind of model the recipe mainly serves, such as `Text generation`.
+    - `supported_modes` - Deployment modes the recipe serves (such as `chat` or `image`), distinct from model capability labels like `edit` and `upscaling`.
     - `selectable_backend` - Whether a `<recipe>_backend` option chooses the recipe's backend.
     - `uses_ctx_size` - Whether the recipe accepts the shared `ctx_size` option.
     - `slot_policy` - How the recipe's models count against loaded-model limits: `standard`, `exclusive_npu` (loading one evicts every NPU model), `coexist_by_type` (one per model type), `exclusive_host` (shares the machine with no other local model) or `unmetered` (never counted or evicted).
@@ -3406,12 +3407,7 @@ Requires `LEMONADE_API_KEY` when it is set.
 **Response:** `200 OK`
 
 ```json
-{
-  "hold_id": "hold-1",
-  "reloaded": ["Qwen3-0.6B-GGUF", "nomic-embed-text-v1-GGUF"],
-  "failed": [],
-  "expired": false
-}
+{"hold_id": "hold-1", "reloaded": [], "failed": [], "expired": false}
 ```
 
 ### Response format
@@ -3472,12 +3468,7 @@ Requires `LEMONADE_API_KEY` when it is set.
 **Response:** `200 OK`
 
 ```json
-{
-  "hold_id": "hold-2",
-  "reason": "quantize a checkpoint",
-  "max_seconds": 1,
-  "unloaded": ["Qwen3-0.6B-GGUF"]
-}
+{"hold_id": "hold-2", "reason": "quantize a checkpoint", "max_seconds": 1, "unloaded": []}
 ```
 
 ### Response format

@@ -28,9 +28,10 @@ vm.runInNewContext(compiled.outputText, context);
 const { estimatedModelLoadPercent: estimate, relevantChatDownload: select } = context.module.exports;
 
 assert.equal(estimate(1, 0), 0);
-assert.equal(estimate(1, 1000 + 1024 ** 3 / 1_000_000_000 * 1000), 99);
+// ModelInfo.size is decimal GB on the fork (lemon/model_size.h): 1 GB at 1 GB/s + 1 s startup = 2 s.
+assert.equal(estimate(1, 2000), 99);
 assert.equal(estimate(1, 1_000_000), 99, 'loading must never show 100%');
-assert.equal(estimate(8, 1000), 10, 'larger models take proportionally longer');
+assert.equal(estimate(8, 1000), 11, 'larger models take proportionally longer');
 assert.equal(estimate(undefined, 2000), null, 'unknown size is indeterminate');
 assert.equal(estimate(0, 2000), null);
 assert.equal(estimate(-1, 2000), null);
@@ -50,7 +51,7 @@ assert.equal(select([{ ...model, status: 'completed', running: true }], 'My-Mode
   'server finalization is still considered active');
 
 const chatSource = fs.readFileSync(path.join(root, 'src/components/ChatView.tsx'), 'utf8');
-assert.match(chatSource, /<ChatReadinessProgress[\s\S]*modelSizeGiB=/);
+assert.match(chatSource, /<ChatReadinessProgress[\s\S]*modelSizeGb=/);
 const indicatorAt = chatSource.indexOf('<ChatReadinessProgress');
 const modelStackAt = chatSource.indexOf('<div className="composer__model-stack">');
 const entryAt = chatSource.indexOf('<div className={`composer__entry${hasComposerSettings');
