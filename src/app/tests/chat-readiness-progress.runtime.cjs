@@ -50,7 +50,7 @@ assert.equal(select([{ ...model, status: 'completed', running: true }], 'My-Mode
   'server finalization is still considered active');
 
 const chatSource = fs.readFileSync(path.join(root, 'src/components/ChatView.tsx'), 'utf8');
-assert.match(chatSource, /<ChatReadinessProgress[\s\S]*modelSizeGiB=/);
+assert.match(chatSource, /<ChatReadinessProgress[\s\S]*modelSizeGb=/);
 const indicatorAt = chatSource.indexOf('<ChatReadinessProgress');
 const modelStackAt = chatSource.indexOf('<div className="composer__model-stack">');
 const entryAt = chatSource.indexOf('<div className={`composer__entry${hasComposerSettings');
