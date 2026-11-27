@@ -62,8 +62,14 @@ inline const BackendDescriptor descriptor = {
     // v2026.47.1 inserted `about` immediately before `supported_modes` in BackendDescriptor, and this
     // descriptor is built positionally, so every value below shifted one slot: the mode list landed in the
     // `about` map and the build stopped at "could not convert ... from brace-enclosed initializer list".
-    // Empty is the correct value here -- the onebit backend has no about-page entry.
-    /*about*/ {},
+    // v2026.47.1's test_backend_contracts ("backend about") requires an entry for every backend in
+    // `support`, so each variant names the engine it runs (the 1bit engine, one binary for both).
+    /*about*/ {
+        {"hrx", {"The 1bit engine on the Strix Halo iGPU through AMD's HRX runtime.",
+                 "1bit-MONSTER", "1bit-MONSTER", "Apache-2.0", "https://github.com/1bit-MONSTER/engine"}},
+        {"npu", {"The 1bit engine on the XDNA2 NPU, serving 1bit NPU model directories.",
+                 "1bit-MONSTER", "1bit-MONSTER", "Apache-2.0", "https://github.com/1bit-MONSTER/engine"}},
+    },
     /*supported_modes*/ {"chat", "embeddings", "reranking", "classification"},  // `1bit serve --embedding / --reranking`
     /*required_checkpoints*/ {"main"},
     /*default_capabilities*/ {},

@@ -26,9 +26,6 @@ We have designed a set of Lemonade-specific endpoints to enable client applicati
 | `GET` | [`/v1/docs`](#get-v1docs) | List the API reference pages bundled with the running server |
 | `GET` | [`/v1/docs/{page}`](#get-v1docspage) | Read one bundled API reference page |
 | `GET` | [`/v1/health`](#get-v1health) | Check the server's status and loaded models |
-| `GET` | [`/v1/hold`](#get-v1hold) | Whether a hold keeps the model slots free |
-| `POST` | [`/v1/hold/release`](#post-v1holdrelease) | Bring the held models back |
-| `POST` | [`/v1/hold`](#post-v1hold) | Free every model slot for heavy work |
 | `GET` | [`/v1/stats`](#get-v1stats) | Read performance statistics from the last request |
 | `GET` | [`/v1/system-stats`](#get-v1system-stats) | Read the host's resource usage |
 | `GET` | [`/metrics`](#get-metrics) | Serve metrics for Prometheus to scrape |
@@ -47,6 +44,9 @@ We have designed a set of Lemonade-specific endpoints to enable client applicati
 | `POST` | [`/v1/jobs/{id}/resume`](#post-v1jobsidresume) | Resume a job |
 | `GET` | [`/v1/jobs/{id}`](#get-v1jobsid) | Read a job |
 | `DELETE` | [`/v1/jobs/{id}`](#delete-v1jobsid) | Delete a job |
+| `GET` | [`/v1/hold`](#get-v1hold) | Whether a hold keeps the model slots free |
+| `POST` | [`/v1/hold/release`](#post-v1holdrelease) | Bring the held models back |
+| `POST` | [`/v1/hold`](#post-v1hold) | Free every model slot for heavy work |
 <!-- END GENERATED: lemonade.summary -->
 
 Some Lemonade endpoints live on other pages: the per-model [`/v1/models/{id}/files`](openai.md#get-v1modelsidfiles) and [`/v1/models/{id}/options`](openai.md#get-v1modelsidoptions) extensions sit with the OpenAI models endpoints, routing and [`/v1/routing/validate`](router.md#post-v1routingvalidate) are on the [Router API](router.md) page, and endpoints for clients bundled with the server are on the [Internal API](internal.md) page.
@@ -3407,12 +3407,7 @@ Requires `LEMONADE_API_KEY` when it is set.
 **Response:** `200 OK`
 
 ```json
-{
-  "hold_id": "hold-1",
-  "reloaded": ["Qwen3-0.6B-GGUF", "nomic-embed-text-v1-GGUF"],
-  "failed": [],
-  "expired": false
-}
+{"hold_id": "hold-1", "reloaded": [], "failed": [], "expired": false}
 ```
 
 ### Response format
@@ -3473,12 +3468,7 @@ Requires `LEMONADE_API_KEY` when it is set.
 **Response:** `200 OK`
 
 ```json
-{
-  "hold_id": "hold-2",
-  "reason": "quantize a checkpoint",
-  "max_seconds": 1,
-  "unloaded": ["Qwen3-0.6B-GGUF"]
-}
+{"hold_id": "hold-2", "reason": "quantize a checkpoint", "max_seconds": 1, "unloaded": []}
 ```
 
 ### Response format
