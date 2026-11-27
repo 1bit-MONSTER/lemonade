@@ -287,7 +287,16 @@ void OnebitServer::load(const std::string& model_name,
         argv.push_back(std::to_string(ctx_size));
     }
     // A vision model's projector (engine#3549): without it llama-server answers image parts with a 500.
-    for (auto& a : onebit::mmproj_args(model_info.resolved_path("mmproj"), npu_pack)) argv.push_back(std::move(a));
+    {
+        const std::string mmproj = model_info.resolved_path("mmproj");
+        std::error_code mec;
+        const bool mmproj_on_disk = !mmproj.empty() && std::filesystem::is_regular_file(mmproj, mec);
+        if (!mmproj.empty() && !mmproj_on_disk && !npu_pack) {
+            LOG(WARNING, "1bit") << "'" << model_name << "' names a projector that is not on disk (" << mmproj
+                                 << "); loading it without one, so it answers text only" << std::endl;
+        }
+        for (auto& a : onebit::mmproj_args(mmproj, npu_pack, mmproj_on_disk)) argv.push_back(std::move(a));
+    }
     // Embedding and reranking models run in that role (llama-server --embedding / --reranking
     // on the device asked for); chat models need no flag.
     if (model_info.type == ModelType::EMBEDDING) argv.push_back("--embedding");

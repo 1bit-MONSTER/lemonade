@@ -33,11 +33,13 @@ static void check(const char* name, bool ok) {
 
 int main() {
     const std::string proj = "/models/snap/mmproj-F16.gguf";
-    check("a GGUF model with an mmproj checkpoint gets --mmproj <path>",
-          mmproj_args(proj, false) == std::vector<std::string>{"--mmproj", proj});
-    check("a model without an mmproj checkpoint gets no flag", mmproj_args("", false).empty());
-    check("an NPU model directory gets no projector (1bit serve refuses one there)", mmproj_args(proj, true).empty());
-    check("an NPU model directory without a projector gets none either", mmproj_args("", true).empty());
+    check("a GGUF model with its projector on disk gets --mmproj <path>",
+          mmproj_args(proj, false, true) == std::vector<std::string>{"--mmproj", proj});
+    check("a model without an mmproj checkpoint gets no flag", mmproj_args("", false, false).empty());
+    check("a projector that is registered but not on disk gets no flag (the model loads for text)",
+          mmproj_args(proj, false, false).empty());
+    check("an NPU model directory gets no projector (1bit serve refuses one there)", mmproj_args(proj, true, true).empty());
+    check("an NPU model directory without a projector gets none either", mmproj_args("", true, false).empty());
     if (g_failures) {
         std::printf("FAILED: %d\n", g_failures);
         return 1;

@@ -20,7 +20,11 @@
 // (hrx, cpu) and refuses it for an NPU model directory ("--mmproj works on the llama.cpp devices"), so an NPU
 // pack gets none: passing it there would turn a working text load into a refused one. Without this, OnebitServer
 // never read the checkpoint, and an `images` request reached a llama-server started with no projector (HTTP 500
-// "image input is not supported"). The same rule LlamaCppServer applies ("Add mmproj file if present").
+// "image input is not supported"). It is the part of LlamaCppServer's rule ("Add mmproj file if present") that applies to
+// onebit: its `hf_load` skip does not (OnebitServer always serves the resolved checkpoint, never `-hf`), and its CPU
+// `--no-mmproj-offload` is `1bit serve`'s to add for --device cpu (it builds that llama-server argv; onebit cannot pass the
+// flag). A projector that is registered but not on disk yet gets no flag, so the model still loads for text instead of
+// the whole load failing on `--mmproj <missing>` (fork #66 review).
 
 #pragma once
 
@@ -31,10 +35,10 @@ namespace lemon {
 namespace backends {
 namespace onebit {
 
-// The `1bit serve` arguments for a model's projector: {"--mmproj", path}, or none when it has no projector or
-// the checkpoint is an NPU model directory.
-inline std::vector<std::string> mmproj_args(const std::string& mmproj_path, bool npu_pack) {
-    if (mmproj_path.empty() || npu_pack) return {};
+// The `1bit serve` arguments for a model's projector: {"--mmproj", path}, or none when it has no projector, the
+// projector file is not on disk (`on_disk` false), or the checkpoint is an NPU model directory.
+inline std::vector<std::string> mmproj_args(const std::string& mmproj_path, bool npu_pack, bool on_disk) {
+    if (mmproj_path.empty() || npu_pack || !on_disk) return {};
     return {"--mmproj", mmproj_path};
 }
 
