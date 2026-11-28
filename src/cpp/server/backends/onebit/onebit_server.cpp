@@ -1,5 +1,6 @@
 // onebit_server.cpp: the 1bit engine (`1bit serve`) as a Lemonade backend.
 #include "lemon/backends/onebit/onebit_server.h"
+#include "lemon/backends/onebit/onebit_vision.h"
 #include "lemon/backends/onebit/onebit_env.h"
 
 #include "lemon/backends/backend_ops.h"
@@ -284,6 +285,17 @@ void OnebitServer::load(const std::string& model_name,
     if (ctx_size > 0) {
         argv.push_back("--ctx-size");
         argv.push_back(std::to_string(ctx_size));
+    }
+    // A vision model's projector (engine#3549): without it llama-server answers image parts with a 500.
+    {
+        const std::string mmproj = model_info.resolved_path("mmproj");
+        std::error_code mec;
+        const bool mmproj_on_disk = !mmproj.empty() && std::filesystem::is_regular_file(mmproj, mec);
+        if (!mmproj.empty() && !mmproj_on_disk && !npu_pack) {
+            LOG(WARNING, "1bit") << "'" << model_name << "' names a projector that is not on disk (" << mmproj
+                                 << "); loading it without one, so it answers text only" << std::endl;
+        }
+        for (auto& a : onebit::mmproj_args(mmproj, npu_pack, mmproj_on_disk)) argv.push_back(std::move(a));
     }
     // Embedding and reranking models run in that role (llama-server --embedding / --reranking
     // on the device asked for); chat models need no flag.
