@@ -23,6 +23,7 @@
 #include <vector>
 
 using lemon::backends::onebit::mmproj_args;
+using lemon::backends::onebit::mmproj_env;
 
 static int g_failures = 0;
 
@@ -40,6 +41,12 @@ int main() {
           mmproj_args(proj, false, false).empty());
     check("an NPU model directory gets no projector (1bit serve refuses one there)", mmproj_args(proj, true, true).empty());
     check("an NPU model directory without a projector gets none either", mmproj_args("", true, false).empty());
+    // engine#3549/#3588: a model served with a projector keeps it on the CPU (the HRX image path aborts the server)
+    const auto env = mmproj_env(mmproj_args(proj, false, true));
+    check("a projector served gets LLAMA_ARG_MMPROJ_OFFLOAD=false (projector on the CPU)",
+          env.size() == 1 && env[0].first == "LLAMA_ARG_MMPROJ_OFFLOAD" && env[0].second == "false");
+    check("no projector, no environment change", mmproj_env(mmproj_args("", false, false)).empty());
+    check("an NPU pack (no projector passed) gets no environment change", mmproj_env(mmproj_args(proj, true, true)).empty());
     if (g_failures) {
         std::printf("FAILED: %d\n", g_failures);
         return 1;
