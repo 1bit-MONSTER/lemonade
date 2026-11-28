@@ -287,6 +287,7 @@ void OnebitServer::load(const std::string& model_name,
         argv.push_back(std::to_string(ctx_size));
     }
     // A vision model's projector (engine#3549): without it llama-server answers image parts with a 500.
+    std::vector<std::string> mmproj_argv;
     {
         const std::string mmproj = model_info.resolved_path("mmproj");
         std::error_code mec;
@@ -295,7 +296,8 @@ void OnebitServer::load(const std::string& model_name,
             LOG(WARNING, "1bit") << "'" << model_name << "' names a projector that is not on disk (" << mmproj
                                  << "); loading it without one, so it answers text only" << std::endl;
         }
-        for (auto& a : onebit::mmproj_args(mmproj, npu_pack, mmproj_on_disk)) argv.push_back(std::move(a));
+        mmproj_argv = onebit::mmproj_args(mmproj, npu_pack, mmproj_on_disk);
+        for (const auto& a : mmproj_argv) argv.push_back(a);
     }
     // Embedding and reranking models run in that role (llama-server --embedding / --reranking
     // on the device asked for); chat models need no flag.
@@ -342,6 +344,12 @@ void OnebitServer::load(const std::string& model_name,
     } else {
         command.program = bin;
         command.args = argv;
+    }
+    // ... and that projector runs on the CPU, on either path (onebit_vision.h: the HRX image path aborts, #3549)
+    for (auto& kv : onebit::mmproj_env(mmproj_argv)) {
+        LOG(INFO, "1bit") << "'" << model_name << "': projector on the CPU (" << kv.first << "=" << kv.second
+                          << "; engine#3549)" << std::endl;
+        command.env.push_back(std::move(kv));
     }
     command.port = backend_port;
     // NPU: the array refuses a new hardware context for ~2 s after the previous holder exits (0011v2 frees
